@@ -7,4 +7,7 @@ All other dependecies are added via submodules or available through apt (see src
 - Clone this repository and don't forget to fetch the submodules `git submodule init && git submodule update`.
 - Download built binaries [here](https://github.com/MrTomzor/navigation_unity_testbed) (see readme) and put it into the `sim_build` folder.
 - Build the workspace using `cd ws && catkin b`
-- Use the script `sim_tmux.sh` to start the simulation. Optionally run the `support.launch` to resize camera, publish odometry and enable control (with attached ps4 controller).
+- Use the script `sim_tmux.sh` to start the simulation.
+- Attach to tmux session `tmux a -t simulator` to control the simulation.
+- You should manually run the `support.launch` (3rd tmux pane) to resize camera, publish odometry and enable control (with attached ps4 controller).
+- There is tmux session in `pfvtr` submodule tailored specifically for the simulator `start_sim.sh`.
