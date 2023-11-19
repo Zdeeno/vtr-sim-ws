@@ -1,0 +1,9 @@
+[submodule "ws/src/pfvtr"]
+	path = ws/src/pfvtr
+	url = git@github.com:Zdeeno/pfvtr.git
+[submodule "ws/src/metavtr"]
+	path = ws/src/metavtr
+	url = git@github.com:Zdeeno/metavtr.git
+[submodule "ws/src/ROS-TCP-Endpoint"]
+	path = ws/src/ROS-TCP-Endpoint
+	url = git@github.com:Unity-Technologies/ROS-TCP-Endpoint.git
