@@ -167,7 +167,6 @@ catkin_install_python(PROGRAMS
   scripts/return_home_trial.py
   scripts/cmd_repub.py
   scripts/tf2odom.py
-  scripts/img_repub.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
