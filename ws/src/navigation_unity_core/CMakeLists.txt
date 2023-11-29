@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   navigation_unity_msgs
+  pfvtr
 )
 
 ## System dependencies are found with CMake's conventions
@@ -94,6 +95,15 @@ find_package(catkin REQUIRED COMPONENTS
 #   cfg/DynReconf2.cfg
 # )
 
+ generate_messages(                                                             
+   DEPENDENCIES                                                                 
+   std_msgs                                                                     
+   actionlib_msgs                                                               
+   sensor_msgs                                                                  
+   geometry_msgs
+   pfvtr
+)           
+
 ###################################
 ## catkin specific configuration ##
 ###################################
@@ -167,6 +177,7 @@ catkin_install_python(PROGRAMS
   scripts/return_home_trial.py
   scripts/cmd_repub.py
   scripts/tf2odom.py
+  scripts/simulator.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -28,7 +28,7 @@ class TFtoOdometryConverter:
                 # Create and populate the odometry message
                 odom_msg = Odometry()
                 odom_msg.header.stamp = tf_timestamp
-                odom_msg.header.frame_id = "/world_origin"
+                odom_msg.header.frame_id = "map"
                 odom_msg.child_frame_id = "/robot1/chassis_link"
                 odom_msg.pose.pose = Pose(Point(*trans), Quaternion(*rot))
                 odom_msg.twist.twist = Twist()
