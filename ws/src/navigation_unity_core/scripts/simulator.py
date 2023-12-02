@@ -1,16 +1,20 @@
 import rospy
+import actionlib
 import rosbag
 import numpy as np
 import os
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, Quaternion
 from nav_msgs.msg import Odometry
-from pfvtr.msg import DistancedTwist
+from pfvtr.msg import DistancedTwist, MapRepeaterAction, MapRepeaterResult, MapRepeaterGoal
 from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
+import copy
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 plt.switch_backend('TKAgg')
 
 MAP_DIR = "/home/zdeeno/.ros/simulator_maps"
+USE_VTR = True
 
 class Map:
     def __init__(self, map_dir):
@@ -71,13 +75,11 @@ class Map:
 
 
 class Simulator:
-    def __init__(self):
+    def __init__(self, map_dir, use_vtr):        
         # visualization initialization
-        plt.ion()
-        self.fig, self.ax = plt.subplots()
-        self.ax.grid()
-        self.trav_x = []
-        self.trav_y = []
+        self.use_vtr = use_vtr
+        self.simulating = False
+
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
         
@@ -85,14 +87,16 @@ class Simulator:
         rospy.init_node('simulator')
         self.marker_pub = rospy.Publisher("/map_viz", MarkerArray, queue_size=5)
         self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose)
+        if self.use_vtr:
+            rospy.logwarn("Waiting for PFVTR")
+            self.client = actionlib.SimpleActionClient("/pfvtr/repeater", MapRepeaterAction) # for VTR
+            rospy.logwarn("PFVTR available")
+        else:
+            self.client = None
 
         # parsing maps
-        all_map_dirs = [ f.path for f in os.scandir(MAP_DIR) if f.is_dir() ]
+        all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
         self.maps = [Map(p) for p in all_map_dirs]
-
-        # plot map and teleport robot
-        self.plt_trajectory(0)
-        self.teleport(0)
         
         # sub gt position
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback)
@@ -102,19 +106,42 @@ class Simulator:
 
         rospy.spin()  
  
+    def reset_sim(self):
+        # clear variables
+        self.simulating = False
+        plt.close()
+        plt.ion()
+        self.fig, self.ax = plt.subplots()
+        self.ax.grid()
+        self.trav_x = []
+        self.trav_y = []
+        # choose new map
+        new_map_idx = np.random.randint(len(self.maps))
+        # plot map and teleport the robot
+        self.plt_trajectory(new_map_idx)
+        dist = self.teleport(new_map_idx, pos_err=2.0, rot_err=1.0)
+        rospy.sleep(1) # avoid plotting errors
+        self.simulating = True
+        return new_map_idx, dist
+        
+ 
     def main_loop(self):
         # Main simulation loop
+        map_idx, dist = self.reset_sim()
+        if self.use_vtr:
+            self.vtr_traversal(map_idx, dist)
         while True:
             self.plt_robot()
 
     def plt_robot(self):
         # TODO: Throw away trav coords for long traversals
-        self.plot_counter += 1
-        if self.plot_wait <= self.plot_counter: # does it work? does not seem waiting ...
-            self.ax.plot(self.trav_x, self.trav_y, "r")
-            self.fig.canvas.draw()
-            self.fig.canvas.flush_events()
-            self.plot_counter = 0
+        if self.simulating:
+            self.plot_counter += 1
+            if self.plot_wait <= self.plot_counter: # does it work? does not seem waiting ...
+                self.ax.plot(self.trav_x, self.trav_y, "r")
+                self.fig.canvas.draw()
+                self.fig.canvas.flush_events()
+                self.plot_counter = 0
     
     def rviz_trajectory(self, map_idx):
         marker_pub.publish(self.maps[map_idx].get_rviz_marker())
@@ -128,15 +155,35 @@ class Simulator:
         self.fig.canvas.flush_events()
 
     def odom_callback(self, msg):
-        self.trav_x.append(msg.pose.pose.position.x)
-        self.trav_y.append(msg.pose.pose.position.y)
+        if self.simulating:
+            self.trav_x.append(msg.pose.pose.position.x)
+            self.trav_y.append(msg.pose.pose.position.y)
 
-    def teleport(self, map_idx):
-        odom_pos = self.maps[map_idx].odoms[0]
+    def teleport(self, map_idx, pos_err=0.0, rot_err=0.0):
+        pct_dist = 0.0
+        starting_dist_idx = int(len(self.maps[map_idx].odoms) * pct_dist)
+        odom_pos = copy.copy(self.maps[map_idx].odoms[starting_dist_idx])
         pose_to = odom_pos.pose.pose
-        pose_to.position.z += 0.5 # spawn bit higher to avoid textures
+        diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
+        # randomize the spawning
+        pose_to.position.x += diff_x * pos_err       
+        pose_to.position.y += diff_y * pos_err
+        a, b, c = euler_from_quaternion([pose_to.orientation.x, pose_to.orientation.y, pose_to.orientation.z, pose_to.orientation.w])
+        target_quat = quaternion_from_euler(a, b, c + diff_phi * rot_err)
+        pose_to.orientation = Quaternion(*target_quat)
+        pose_to.position.z += 0.25 # spawn bit higher to avoid textures        
         self.teleport_pub.publish(pose_to)
         rospy.logwarn("Teleporting robot!")
+        return self.maps[map_idx].dists[starting_dist_idx]
+        
+    def vtr_traversal(self, map_idx, start_pos):
+        map_name = self.maps[map_idx].name
+        end_pos = self.maps[map_idx].dists[-1]
+        rospy.loginfo("Starting traversal of map: " + map_name)
+        curr_action = MapRepeaterGoal(startPos=start_pos, endPos=end_pos, traversals=0, nullCmd=True, imagePub=1, useDist=True, mapName=map_name)
+        self.client.send_goal(curr_action)
+        return
+    
 
 if __name__ == '__main__':
-    sim = Simulator()
+    sim = Simulator(MAP_DIR, USE_VTR)
