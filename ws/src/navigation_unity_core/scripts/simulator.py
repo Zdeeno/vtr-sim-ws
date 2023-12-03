@@ -5,7 +5,7 @@ import numpy as np
 import os
 from geometry_msgs.msg import Twist, Pose, Quaternion
 from nav_msgs.msg import Odometry
-from pfvtr.msg import DistancedTwist, MapRepeaterAction, MapRepeaterResult, MapRepeaterGoal
+from pfvtr.msg import DistancedTwist, MapRepeaterAction, MapRepeaterResult, MapRepeaterGoal, SensorsInput, SensorsOutput
 from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
@@ -21,7 +21,6 @@ class Map:
         rospy.logwarn("Parsin map at: " + map_dir)
         self.name = map_dir.split("/")[-1]
         self.bag_path = os.path.join(map_dir + "/" + self.name + ".bag")
-        rospy.logwarn(self.bag_path)
         self.bag = rosbag.Bag(self.bag_path, "r")
         self.dists, self.odoms, self.actions = self.fetch_map(self.bag)
         
@@ -79,6 +78,7 @@ class Simulator:
         # visualization initialization
         self.use_vtr = use_vtr
         self.simulating = False
+        self.target_dist = 0.0
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
@@ -100,37 +100,34 @@ class Simulator:
         
         # sub gt position
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback)
-        
-        # run simulation loop
-        self.main_loop()
-
-        rospy.spin()  
  
     def reset_sim(self):
         # clear variables
+        rospy.logwarn("Starting new round!")
         self.simulating = False
+        self.trav_x = []
+        self.trav_y = []
         plt.close()
         plt.ion()
         self.fig, self.ax = plt.subplots()
         self.ax.grid()
-        self.trav_x = []
-        self.trav_y = []
         # choose new map
         new_map_idx = np.random.randint(len(self.maps))
         # plot map and teleport the robot
         self.plt_trajectory(new_map_idx)
-        dist = self.teleport(new_map_idx, pos_err=2.0, rot_err=1.0)
+        self.target_dist = self.maps[new_map_idx].dists[-1]
+        dist = self.teleport(new_map_idx, pos_err=2.0, rot_err=0.5)
         rospy.sleep(1) # avoid plotting errors
-        self.simulating = True
         return new_map_idx, dist
         
- 
     def main_loop(self):
         # Main simulation loop
         map_idx, dist = self.reset_sim()
         if self.use_vtr:
             self.vtr_traversal(map_idx, dist)
-        while True:
+        else:
+            self.simulating = True
+        while self.simulating:
             self.plt_robot()
 
     def plt_robot(self):
@@ -160,30 +157,67 @@ class Simulator:
             self.trav_y.append(msg.pose.pose.position.y)
 
     def teleport(self, map_idx, pos_err=0.0, rot_err=0.0):
-        pct_dist = 0.0
+        pct_dist = 0.5 * np.random.rand(1)[0]
         starting_dist_idx = int(len(self.maps[map_idx].odoms) * pct_dist)
         odom_pos = copy.copy(self.maps[map_idx].odoms[starting_dist_idx])
-        pose_to = odom_pos.pose.pose
+        pose_to = Pose()
         diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
         # randomize the spawning
-        pose_to.position.x += diff_x * pos_err       
-        pose_to.position.y += diff_y * pos_err
-        a, b, c = euler_from_quaternion([pose_to.orientation.x, pose_to.orientation.y, pose_to.orientation.z, pose_to.orientation.w])
+        pose_to.position.x = odom_pos.pose.pose.position.x + diff_x * pos_err       
+        pose_to.position.y = odom_pos.pose.pose.position.y + diff_y * pos_err
+        a, b, c = euler_from_quaternion([odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z, odom_pos.pose.pose.orientation.w])
         target_quat = quaternion_from_euler(a, b, c + diff_phi * rot_err)
         pose_to.orientation = Quaternion(*target_quat)
-        pose_to.position.z += 0.25 # spawn bit higher to avoid textures        
+        pose_to.position.z = odom_pos.pose.pose.position.z + 0.25 # spawn bit higher to avoid textures        
         self.teleport_pub.publish(pose_to)
         rospy.logwarn("Teleporting robot!")
         return self.maps[map_idx].dists[starting_dist_idx]
         
     def vtr_traversal(self, map_idx, start_pos):
+        rospy.logwarn("Traversing using VTR at distance " + str(start_pos))
         map_name = self.maps[map_idx].name
         end_pos = self.maps[map_idx].dists[-1]
         rospy.loginfo("Starting traversal of map: " + map_name)
         curr_action = MapRepeaterGoal(startPos=start_pos, endPos=end_pos, traversals=0, nullCmd=True, imagePub=1, useDist=True, mapName=map_name)
         self.client.send_goal(curr_action)
+        self.simulating = True
         return
     
 
+class Environment:
+    def __init__(self, map_dir, use_vtr):
+        # subscribe observations
+        self.sim = None
+        self.obs_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self.obs_callback, queue_size=1)
+        self.distance_sub = rospy.Subscriber("/pfvtr/repeat/output_dist", SensorsOutput, self.dist_callback, queue_size=1)
+        self.map_hists = None  # histogram comparing live vs map images
+        self.live_diff_hist = None  # curr live img vs prev live img 
+        self.dists = None  # distances of map images 
+        self.map_diff_hist = None  # consecutive map images comparison
+        self.est_dist = None
+        
+        # start simulation
+        self.sim = Simulator(map_dir, use_vtr)
+        while True:
+            self.sim.main_loop()
+            rospy.sleep(1)
+
+    def obs_callback(self, msg):
+        # fetch all possible observations
+        self.map_hists = np.array(msg.map_histograms[0].values).reshape(msg.map_histograms[0].shape)
+        self.live_diff_hist = np.array(msg.live_histograms[0].values).reshape(msg.live_histograms[0].shape)
+        self.dists = np.array(msg.map_distances)
+        self.map_diff_hist = np.array(msg.map_transitions[0].values).reshape(msg.map_transitions[0].shape)
+        
+    def dist_callback(self, msg):
+        # fetch estimated distance
+        if self.sim is not None and self.sim.simulating:
+            self.est_dist = msg.output
+            if self.est_dist >= self.sim.target_dist - 0.5:
+                self.sim.simulating = False
+                rospy.sleep(3)
+            
+    
+
 if __name__ == '__main__':
-    sim = Simulator(MAP_DIR, USE_VTR)
+    sim = Environment(MAP_DIR, USE_VTR)
