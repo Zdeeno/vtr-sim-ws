@@ -107,6 +107,7 @@ class Simulator:
         self.simulating = False
         self.trav_x = []
         self.trav_y = []
+        self.init_pos = None
         plt.close()
         plt.ion()
         self.fig, self.ax = plt.subplots()
@@ -134,7 +135,10 @@ class Simulator:
         # TODO: Throw away trav coords for long traversals
         if self.simulating:
             self.plot_counter += 1
-            if self.plot_wait <= self.plot_counter: # does it work? does not seem waiting ...
+            if self.plot_wait <= self.plot_counter:
+                if self.init_pos is not None:
+                    self.ax.scatter(self.init_pos[0], self.init_pos[1], marker="x", color="r")
+                    self.init_pos = None
                 self.ax.plot(self.trav_x, self.trav_y, "r")
                 self.fig.canvas.draw()
                 self.fig.canvas.flush_events()
@@ -160,6 +164,7 @@ class Simulator:
         pct_dist = 0.5 * np.random.rand(1)[0]
         starting_dist_idx = int(len(self.maps[map_idx].odoms) * pct_dist)
         odom_pos = copy.copy(self.maps[map_idx].odoms[starting_dist_idx])
+        self.init_pos = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         pose_to = Pose()
         diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
         # randomize the spawning
