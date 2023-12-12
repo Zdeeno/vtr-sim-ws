@@ -26,15 +26,5 @@
    <node pkg="navigation_unity_core" type="tf2odom.py" name="repub_odom" />
 
    <node pkg="image_transport" type="republish" name="image_decompressor" args="compressed in:=/robot1/camera1/image raw out:=/cam_repub"/>
-  
-   <node pkg="nodelet" type="nodelet" name="pipeline" args="manager" />
-
-   <node pkg="nodelet" type="nodelet" name="image_proc_resize" args="load image_proc/resize /pipeline --no-bond" >
-      <remap from="image" to="/cam_repub"/>
-      <remap from="camera_info" to="/robot1/camera1/camera_info"/>
-      <param name="scale_width" value="0.64"/>
-      <param name="scale_height" value="0.64"/>
-   </node>
-
 
 </launch>

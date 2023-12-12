@@ -24,16 +24,15 @@ tmux send-keys -t simulator:control "sleep 4" Enter
 tmux send-keys -t simulator:control "roslaunch navigation_unity_core support.launch" Enter
 
 tmux send-keys -t simulator:pfvtr "source ws/devel/setup.$x" Enter
-tmux send-keys -t simulator:pfvtr "sleep 6" Enter
 tmux send-keys -t simulator:pfvtr "roslaunch pfvtr sim.launch"
 
 tmux send-keys -t simulator:world "source ws/devel/setup.$x" Enter
 tmux send-keys -t simulator:world "cd ws/src/navigation_unity_core/scripts" Enter
-tmux send-keys -t simulator:world "sleep 6" Enter
 tmux send-keys -t simulator:world "python default_world_loader.py"
 
 tmux send-keys -t simulator:view "source ws/devel/setup.$x" Enter
-tmux send-keys -t simulator:view "rqt_image_view" Enter
+tmux send-keys -t simulator:view "sleep 6" Enter
+tmux send-keys -t simulator:view "rviz" Enter
 
 tmux send-keys -t simulator:simulation "source ws/devel/setup.$x" Enter
 tmux send-keys -t simulator:simulation "python ws/src/navigation_unity_core/scripts/simulator.py"

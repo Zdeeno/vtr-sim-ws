@@ -15,6 +15,7 @@ plt.switch_backend('TKAgg')
 
 MAP_DIR = "/home/zdeeno/.ros/simulator_maps"
 USE_VTR = True
+IMG_PUB = 1
 
 class Map:
     def __init__(self, map_dir):
@@ -183,7 +184,7 @@ class Simulator:
         map_name = self.maps[map_idx].name
         end_pos = self.maps[map_idx].dists[-1]
         rospy.loginfo("Starting traversal of map: " + map_name)
-        curr_action = MapRepeaterGoal(startPos=start_pos, endPos=end_pos, traversals=0, nullCmd=True, imagePub=1, useDist=True, mapName=map_name)
+        curr_action = MapRepeaterGoal(startPos=start_pos, endPos=end_pos, traversals=0, nullCmd=True, imagePub=IMG_PUB, useDist=True, mapName=map_name)
         self.client.send_goal(curr_action)
         self.simulating = True
         return
