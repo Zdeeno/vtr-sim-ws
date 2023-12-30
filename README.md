@@ -5,7 +5,7 @@ All other dependecies are added via submodules or available through apt (see src
 
 ## Initialization
 - Clone this repository and don't forget to fetch the submodules `git submodule init && git submodule update`.
-- Download built binaries [here](https://github.com/MrTomzor/navigation_unity_testbed) (see readme) and put it into the `sim_build` folder.
+- Download built binaries [here](https://github.com/MrTomzor/navigation_unity_testbed) (see readme and releases) and put it into the `sim_build` folder.
 - Build the workspace using `cd ws && catkin b`
 - Use the script `sim_tmux.sh` to start the simulation.
 - Attach to tmux session `tmux a -t simulator` to control the simulation.
