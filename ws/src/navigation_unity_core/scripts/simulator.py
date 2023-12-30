@@ -10,12 +10,12 @@ from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from vtr import PFVTR
 
 plt.switch_backend('TKAgg')
 
 MAP_DIR = "/home/zdeeno/.ros/simulator_maps"
 USE_VTR = True
-IMG_PUB = 1
 
 class Map:
     def __init__(self, map_dir):
@@ -78,23 +78,19 @@ class Simulator:
     def __init__(self, map_dir, use_vtr):        
         # visualization initialization
         self.use_vtr = use_vtr
-        self.simulating = False
         self.target_dist = 0.0
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
         
+        self.curr_x = None
+        self.curr_y = None
+        
         # ros initialization
         rospy.init_node('simulator')
         self.marker_pub = rospy.Publisher("/map_viz", MarkerArray, queue_size=5)
         self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose)
-        if self.use_vtr:
-            rospy.logwarn("Waiting for PFVTR")
-            self.client = actionlib.SimpleActionClient("/pfvtr/repeater", MapRepeaterAction) # for VTR
-            rospy.logwarn("PFVTR available")
-        else:
-            self.client = None
-
+        
         # parsing maps
         all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
         self.maps = [Map(p) for p in all_map_dirs]
@@ -105,7 +101,6 @@ class Simulator:
     def reset_sim(self):
         # clear variables
         rospy.logwarn("Starting new round!")
-        self.simulating = False
         self.trav_x = []
         self.trav_y = []
         self.init_pos = None
@@ -121,29 +116,21 @@ class Simulator:
         dist = self.teleport(new_map_idx, pos_err=2.0, rot_err=0.5)
         rospy.sleep(1) # avoid plotting errors
         return new_map_idx, dist
-        
-    def main_loop(self):
-        # Main simulation loop
-        map_idx, dist = self.reset_sim()
-        if self.use_vtr:
-            self.vtr_traversal(map_idx, dist)
-        else:
-            self.simulating = True
-        while self.simulating:
-            self.plt_robot()
 
     def plt_robot(self):
         # TODO: Throw away trav coords for long traversals
-        if self.simulating:
-            self.plot_counter += 1
-            if self.plot_wait <= self.plot_counter:
-                if self.init_pos is not None:
-                    self.ax.scatter(self.init_pos[0], self.init_pos[1], marker="x", color="r")
-                    self.init_pos = None
-                self.ax.plot(self.trav_x, self.trav_y, "r")
-                self.fig.canvas.draw()
-                self.fig.canvas.flush_events()
-                self.plot_counter = 0
+        if self.curr_x is not None and self.curr_y is not None:
+            self.trav_x.append(self.curr_x)
+            self.trav_y.append(self.curr_y)
+        self.plot_counter += 1
+        if self.plot_wait <= self.plot_counter:
+            if self.init_pos is not None:
+                self.ax.scatter(self.init_pos[0], self.init_pos[1], marker="x", color="r")
+                self.init_pos = None
+            self.ax.plot(self.trav_x, self.trav_y, "r")
+            self.fig.canvas.draw()
+            self.fig.canvas.flush_events()
+            self.plot_counter = 0
     
     def rviz_trajectory(self, map_idx):
         marker_pub.publish(self.maps[map_idx].get_rviz_marker())
@@ -157,9 +144,8 @@ class Simulator:
         self.fig.canvas.flush_events()
 
     def odom_callback(self, msg):
-        if self.simulating:
-            self.trav_x.append(msg.pose.pose.position.x)
-            self.trav_y.append(msg.pose.pose.position.y)
+        self.curr_x = msg.pose.pose.position.x
+        self.curr_y = msg.pose.pose.position.y
 
     def teleport(self, map_idx, pos_err=0.0, rot_err=0.0):
         pct_dist = 0.5 * np.random.rand(1)[0]
@@ -179,14 +165,14 @@ class Simulator:
         rospy.logwarn("Teleporting robot!")
         return self.maps[map_idx].dists[starting_dist_idx]
         
-    def vtr_traversal(self, map_idx, start_pos):
+    def vtr_traversal(self, vtr, map_idx, start_pos):
         rospy.logwarn("Traversing using VTR at distance " + str(start_pos))
         map_name = self.maps[map_idx].name
         end_pos = self.maps[map_idx].dists[-1]
         rospy.loginfo("Starting traversal of map: " + map_name)
-        curr_action = MapRepeaterGoal(startPos=start_pos, endPos=end_pos, traversals=0, nullCmd=True, imagePub=IMG_PUB, useDist=True, mapName=map_name)
-        self.client.send_goal(curr_action)
-        self.simulating = True
+        
+        vtr.repeat_map(start_pos, end_pos, map_name)
+        
         return
     
 
@@ -194,34 +180,19 @@ class Environment:
     def __init__(self, map_dir, use_vtr):
         # subscribe observations
         self.sim = None
-        self.obs_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self.obs_callback, queue_size=1)
-        self.distance_sub = rospy.Subscriber("/pfvtr/repeat/output_dist", SensorsOutput, self.dist_callback, queue_size=1)
-        self.map_hists = None  # histogram comparing live vs map images
-        self.live_diff_hist = None  # curr live img vs prev live img 
-        self.dists = None  # distances of map images 
-        self.map_diff_hist = None  # consecutive map images comparison
-        self.est_dist = None
         
         # start simulation
         self.sim = Simulator(map_dir, use_vtr)
-        while True:
-            self.sim.main_loop()
-            rospy.sleep(1)
-
-    def obs_callback(self, msg):
-        # fetch all possible observations
-        self.map_hists = np.array(msg.map_histograms[0].values).reshape(msg.map_histograms[0].shape)
-        self.live_diff_hist = np.array(msg.live_histograms[0].values).reshape(msg.live_histograms[0].shape)
-        self.dists = np.array(msg.map_distances)
-        self.map_diff_hist = np.array(msg.map_transitions[0].values).reshape(msg.map_transitions[0].shape)
+        self.vtr = PFVTR()
         
-    def dist_callback(self, msg):
-        # fetch estimated distance
-        if self.sim is not None and self.sim.simulating:
-            self.est_dist = msg.output
-            if self.est_dist >= self.sim.target_dist - 0.5:
-                self.sim.simulating = False
-                rospy.sleep(3)
+        while True:
+            # main simulation loop
+            map_idx, dist = self.sim.reset_sim()
+            rospy.sleep(2)
+            self.sim.vtr_traversal(self.vtr, map_idx, dist)
+            while not self.vtr.is_finished():
+                self.sim.plt_robot()
+            rospy.sleep(2)
             
     
 
