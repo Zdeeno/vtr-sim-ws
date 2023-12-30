@@ -85,6 +85,10 @@ class Simulator:
         
         self.curr_x = None
         self.curr_y = None
+        self.curr_phi = None
+        self.curr_map_idx = None
+        self.init_displacement = 0.0
+        self.init_rot_error = 0.0
         
         # ros initialization
         rospy.init_node('simulator')
@@ -110,6 +114,7 @@ class Simulator:
         self.ax.grid()
         # choose new map
         new_map_idx = np.random.randint(len(self.maps))
+        self.curr_map_idx = new_map_idx
         # plot map and teleport the robot
         self.plt_trajectory(new_map_idx)
         self.target_dist = self.maps[new_map_idx].dists[-1]
@@ -146,6 +151,8 @@ class Simulator:
     def odom_callback(self, msg):
         self.curr_x = msg.pose.pose.position.x
         self.curr_y = msg.pose.pose.position.y
+        a, b, c = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+        self.curr_phi = c
 
     def teleport(self, map_idx, pos_err=0.0, rot_err=0.0):
         pct_dist = 0.5 * np.random.rand(1)[0]
@@ -154,6 +161,8 @@ class Simulator:
         self.init_pos = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         pose_to = Pose()
         diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
+        self.init_displacement = np.sqrt(diff_x**2 + diff_y**2)
+        self.init_rot_error = diff_phi
         # randomize the spawning
         pose_to.position.x = odom_pos.pose.pose.position.x + diff_x * pos_err       
         pose_to.position.y = odom_pos.pose.pose.position.y + diff_y * pos_err
@@ -170,10 +179,17 @@ class Simulator:
         map_name = self.maps[map_idx].name
         end_pos = self.maps[map_idx].dists[-1]
         rospy.loginfo("Starting traversal of map: " + map_name)
-        
         vtr.repeat_map(start_pos, end_pos, map_name)
-        
         return
+    
+    def traversal_summary(self):
+        odom_pos = copy.copy(self.maps[self.curr_map_idx].odoms[-1])
+        last_x, last_y = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
+        a, b, last_phi = euler_from_quaternion([odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z, odom_pos.pose.pose.orientation.w])
+        last_phi_err = last_phi - self.curr_phi
+        final_displacement = np.sqrt((self.curr_x - last_x)**2 + (self.curr_y - last_y)**2)
+        rospy.logwarn("\n--------- Summary ---------:\nInit displacement distance/rotation " + str(self.init_displacement) + "/" + str(self.init_rot_error) + "\nFinal displacement distance/rotation " + str(final_displacement) + "/" + str(last_phi_err) + "\n---------------------------")
+        
     
 
 class Environment:
@@ -192,6 +208,7 @@ class Environment:
             self.sim.vtr_traversal(self.vtr, map_idx, dist)
             while not self.vtr.is_finished():
                 self.sim.plt_robot()
+            self.sim.traversal_summary()
             rospy.sleep(2)
             
     
