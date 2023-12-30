@@ -13,7 +13,7 @@ tmux new-window -d -n "view"
 x=$(echo $SHELL | sed 's:.*/::')
 
 tmux send-keys -t simulator:simulator "source ws/devel/setup.$x" Enter
-tmux send-keys -t simulator:simulator "sim_build/hardnav_release_04_ROS1.x86_64" Enter
+tmux send-keys -t simulator:simulator "sim_build/hardnav_release_05_ROS1.x86_64" Enter
 
 tmux send-keys -t simulator:ros_tcp "source ws/devel/setup.$x" Enter
 tmux send-keys -t simulator:ros_tcp "sleep 2" Enter
