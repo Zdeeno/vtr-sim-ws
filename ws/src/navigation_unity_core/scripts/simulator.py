@@ -107,6 +107,8 @@ class Simulator:
         rospy.logwarn("Starting new round!")
         self.trav_x = []
         self.trav_y = []
+        self.map_traj_x = None
+        self.map_traj_y = None
         self.init_pos = None
         plt.close()
         plt.ion()
@@ -142,8 +144,8 @@ class Simulator:
         rospy.logwarn("Markers published!")
 
     def plt_trajectory(self, map_idx):
-        x, y = self.maps[map_idx].get_plt_array()
-        self.ax.plot(x, y)
+        self.map_traj_x, self.map_traj_y = self.maps[map_idx].get_plt_array()
+        self.ax.plot(self.map_traj_x, self.map_traj_y)
         plt.show()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -186,10 +188,39 @@ class Simulator:
         odom_pos = copy.copy(self.maps[self.curr_map_idx].odoms[-1])
         last_x, last_y = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         a, b, last_phi = euler_from_quaternion([odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z, odom_pos.pose.pose.orientation.w])
-        last_phi_err = last_phi - self.curr_phi
+        last_phi_err = self.smallest_angle_diff(last_phi, self.curr_phi)
         final_displacement = np.sqrt((self.curr_x - last_x)**2 + (self.curr_y - last_y)**2)
-        rospy.logwarn("\n--------- Summary ---------:\nInit displacement distance/rotation " + str(self.init_displacement) + "/" + str(self.init_rot_error) + "\nFinal displacement distance/rotation " + str(final_displacement) + "/" + str(last_phi_err) + "\n---------------------------")
-        
+        rospy.logwarn("\n--------- Summary ---------:\nInit displacement distance/rotation " + str(self.init_displacement) + "/" + str(self.init_rot_error) + "\nFinal displacement distance/rotation " + str(final_displacement) + "/" + str(last_phi_err) + "\nFinal Chamfer dist: " + str(self._chamfer_dist()) + "\n---------------------------")
+   
+    def smallest_angle_diff(self, angle1, angle2):
+        diff = angle2 - angle1
+        diff = (diff + np.pi) % (2 * np.pi) - np.pi
+        return np.where(diff < -np.pi, diff + 2 * np.pi, diff) 
+
+    def _chamfer_dist(self):
+        map_x = np.array(self.map_traj_x)
+        map_y = np.array(self.map_traj_y)
+        trav_x = np.array(self.trav_x)
+        trav_y = np.array(self.trav_y)
+        map_points = np.column_stack((map_x, map_y))
+        trav_points = np.column_stack((trav_x, trav_y))
+
+        # Function to calculate the minimum distance from each point in one array to the closest point in another array
+        def min_distance(points1, points2):
+            distances = []
+            for point1 in points1:
+                # Calculate Euclidean distances from this point to all points in the other array
+                dist = np.sqrt(np.sum((points2 - point1) ** 2, axis=1))
+                # Append the minimum distance
+                distances.append(np.min(dist))
+            return np.mean(distances)
+
+        # Calculate the directed Chamfer Distances
+        distance_1_to_2 = min_distance(map_points, trav_points)
+        distance_2_to_1 = min_distance(trav_points, map_points)
+
+        # The Chamfer Distance is the average of these two distances
+        return (distance_1_to_2 + distance_2_to_1) / 2
     
 
 class Environment:
