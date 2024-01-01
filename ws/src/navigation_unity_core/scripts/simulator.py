@@ -12,10 +12,10 @@ import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from vtr import PFVTR
 
+np.random.seed(17)
 plt.switch_backend('TKAgg')
 
 MAP_DIR = "/home/zdeeno/.ros/simulator_maps"
-USE_VTR = True
 
 class Map:
     def __init__(self, map_dir):
@@ -75,9 +75,8 @@ class Map:
 
 
 class Simulator:
-    def __init__(self, map_dir, use_vtr):        
-        # visualization initialization
-        self.use_vtr = use_vtr
+    def __init__(self, map_dir):
+        self.failure_dist = 3.0
         self.target_dist = 0.0
 
         self.plot_wait = 100
@@ -85,15 +84,21 @@ class Simulator:
         
         self.curr_x = None
         self.curr_y = None
+        self.last_x = None
+        self.last_y = None
         self.curr_phi = None
         self.curr_map_idx = None
         self.init_displacement = 0.0
         self.init_rot_error = 0.0
+        self.init_pos = None
+
+        self.map_traj = None
         
         # ros initialization
         rospy.init_node('simulator')
         self.marker_pub = rospy.Publisher("/map_viz", MarkerArray, queue_size=5)
         self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose)
+        self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist)
         
         # parsing maps
         all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
@@ -107,8 +112,7 @@ class Simulator:
         rospy.logwarn("Starting new round!")
         self.trav_x = []
         self.trav_y = []
-        self.map_traj_x = None
-        self.map_traj_y = None
+        self.map_traj = None
         self.init_pos = None
         plt.close()
         plt.ion()
@@ -120,7 +124,7 @@ class Simulator:
         # plot map and teleport the robot
         self.plt_trajectory(new_map_idx)
         self.target_dist = self.maps[new_map_idx].dists[-1]
-        dist = self.teleport(new_map_idx, pos_err=2.0, rot_err=0.5)
+        dist = self.teleport(new_map_idx, pos_err=1.0, rot_err=0.5)
         rospy.sleep(1) # avoid plotting errors
         return new_map_idx, dist
 
@@ -144,8 +148,9 @@ class Simulator:
         rospy.logwarn("Markers published!")
 
     def plt_trajectory(self, map_idx):
-        self.map_traj_x, self.map_traj_y = self.maps[map_idx].get_plt_array()
-        self.ax.plot(self.map_traj_x, self.map_traj_y)
+        map_traj_x, map_traj_y = self.maps[map_idx].get_plt_array()
+        self.ax.plot(map_traj_x, map_traj_y)
+        self.map_traj = np.column_stack((map_traj_x, map_traj_y))
         plt.show()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -163,7 +168,7 @@ class Simulator:
         self.init_pos = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         pose_to = Pose()
         diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
-        self.init_displacement = np.sqrt(diff_x**2 + diff_y**2)
+        self.init_displacement = (diff_x, diff_y)
         self.init_rot_error = diff_phi
         # randomize the spawning
         pose_to.position.x = odom_pos.pose.pose.position.x + diff_x * pos_err       
@@ -189,7 +194,7 @@ class Simulator:
         last_x, last_y = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         a, b, last_phi = euler_from_quaternion([odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z, odom_pos.pose.pose.orientation.w])
         last_phi_err = self.smallest_angle_diff(last_phi, self.curr_phi)
-        final_displacement = np.sqrt((self.curr_x - last_x)**2 + (self.curr_y - last_y)**2)
+        final_displacement = (self.curr_x - last_x, self.curr_y - last_y)
         rospy.logwarn("\n--------- Summary ---------:\nInit displacement distance/rotation " + str(self.init_displacement) + "/" + str(self.init_rot_error) + "\nFinal displacement distance/rotation " + str(final_displacement) + "/" + str(last_phi_err) + "\nFinal Chamfer dist: " + str(self._chamfer_dist()) + "\n---------------------------")
    
     def smallest_angle_diff(self, angle1, angle2):
@@ -198,11 +203,8 @@ class Simulator:
         return np.where(diff < -np.pi, diff + 2 * np.pi, diff) 
 
     def _chamfer_dist(self):
-        map_x = np.array(self.map_traj_x)
-        map_y = np.array(self.map_traj_y)
         trav_x = np.array(self.trav_x)
         trav_y = np.array(self.trav_y)
-        map_points = np.column_stack((map_x, map_y))
         trav_points = np.column_stack((trav_x, trav_y))
 
         # Function to calculate the minimum distance from each point in one array to the closest point in another array
@@ -216,20 +218,30 @@ class Simulator:
             return np.mean(distances)
 
         # Calculate the directed Chamfer Distances
-        distance_1_to_2 = min_distance(map_points, trav_points)
-        distance_2_to_1 = min_distance(trav_points, map_points)
+        distance_1_to_2 = min_distance(self.map_traj, trav_points)
+        distance_2_to_1 = min_distance(trav_points, self.map_traj)
 
         # The Chamfer Distance is the average of these two distances
         return (distance_1_to_2 + distance_2_to_1) / 2
-    
+
+    def failure_check(self):
+        # TODO: check also no movement!!!
+        curr_pos = np.array([self.curr_x, self.curr_y])
+        dists = np.sqrt(np.sum((curr_pos - self.map_traj) ** 2, axis=1))
+        min_dist = np.min(dists)
+        if min_dist > self.failure_dist:
+            rospy.logwarn("!!!TRAVERSAL FAILED!!!")
+            return True
+        return False
+
 
 class Environment:
-    def __init__(self, map_dir, use_vtr):
+    def __init__(self, map_dir):
         # subscribe observations
         self.sim = None
         
         # start simulation
-        self.sim = Simulator(map_dir, use_vtr)
+        self.sim = Simulator(map_dir)
         self.vtr = PFVTR()
         
         while True:
@@ -239,10 +251,14 @@ class Environment:
             self.sim.vtr_traversal(self.vtr, map_idx, dist)
             while not self.vtr.is_finished():
                 self.sim.plt_robot()
+                if self.sim.failure_check():
+                    break
             self.sim.traversal_summary()
+            self.vtr.reset()
+            self.sim.control_pub.publish(Twist())  # stop robot movement traversing
             rospy.sleep(2)
             
     
 
 if __name__ == '__main__':
-    sim = Environment(MAP_DIR, USE_VTR)
+    sim = Environment(MAP_DIR)

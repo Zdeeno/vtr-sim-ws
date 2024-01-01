@@ -2,8 +2,38 @@ import rospy
 from pfvtr.msg import DistancedTwist, MapRepeaterAction, MapRepeaterResult, MapRepeaterGoal, SensorsInput, SensorsOutput
 import actionlib
 import numpy as np
+from abc import ABC, abstractmethod
 
-class PFVTR:
+
+class BaseVTR(ABC):
+    """
+    Simulator can use all VTR frameworks implementing this interface!
+    """
+
+    @abstractmethod
+    def repeat_map(self, start=float, end=float, map_name=str):
+        """
+        Start repeating of map with map_name in folder ~/.ros/simulator_maps"
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_finished(self) -> bool:
+        """
+        Check for simulator whether the traversal is finished
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def reset(self):
+        """
+        Stop traversal and reset all states of navigation framework.
+        It is used at the end of run or when failure is detected.
+        """
+        raise NotImplementedError
+
+
+class PFVTR(BaseVTR):
     def __init__(self):
         rospy.logwarn("Trying to instantiate PFCTR class")
         
@@ -22,19 +52,23 @@ class PFVTR:
         self.client = actionlib.SimpleActionClient("/pfvtr/repeater", MapRepeaterAction) # for VTR
         rospy.logwarn("PFVTR successfully connected!")
         
-    def repeat_map(self, start, end, map_name):
+    def repeat_map(self, start=float, end=float, map_name=str):
         """
         Required method!
         """
         self.finished = False
         self.target_dist = end
         self.map_start = True
-        curr_action = MapRepeaterGoal(startPos=start, endPos=end, traversals=0, nullCmd=True, imagePub=1, useDist=True, mapName=map_name)
+        curr_action = MapRepeaterGoal(startPos=start, endPos=end, traversals=0, nullCmd=True, imagePub=2, useDist=True, mapName=map_name)
         self.client.send_goal(curr_action)
         return
     
     def is_finished(self):
         return self.finished
+
+    def reset(self):
+        # TODO: implement this
+        return
     
     def _obs_callback(self, msg):
         # fetch all possible observations
