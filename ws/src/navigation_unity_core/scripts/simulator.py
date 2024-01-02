@@ -76,8 +76,11 @@ class Map:
 
 class Simulator:
     def __init__(self, map_dir):
-        self.failure_dist = 3.0
+        self.failure_dist = 5.0
         self.target_dist = 0.0
+        self.not_moving_trsh = rospy.Duration(5)
+        self.last_moved_time = None
+        self.moving_dist = 0.1
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
@@ -97,8 +100,8 @@ class Simulator:
         # ros initialization
         rospy.init_node('simulator')
         self.marker_pub = rospy.Publisher("/map_viz", MarkerArray, queue_size=5)
-        self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose)
-        self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist)
+        self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose, queue_size=5)
+        self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=5)
         
         # parsing maps
         all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
@@ -124,8 +127,11 @@ class Simulator:
         # plot map and teleport the robot
         self.plt_trajectory(new_map_idx)
         self.target_dist = self.maps[new_map_idx].dists[-1]
-        dist = self.teleport(new_map_idx, pos_err=1.0, rot_err=0.5)
-        rospy.sleep(1) # avoid plotting errors
+        dist = self.teleport(new_map_idx, pos_err=1.0, rot_err=np.pi / 4.0)
+        self.last_moved_time = None
+        self.last_x = None
+        self.last_y = None
+        rospy.sleep(1)  # avoid plotting errors
         return new_map_idx, dist
 
     def plt_robot(self):
@@ -225,12 +231,27 @@ class Simulator:
         return (distance_1_to_2 + distance_2_to_1) / 2
 
     def failure_check(self):
-        # TODO: check also no movement!!!
+        # checking distance from trajectory
         curr_pos = np.array([self.curr_x, self.curr_y])
         dists = np.sqrt(np.sum((curr_pos - self.map_traj) ** 2, axis=1))
         min_dist = np.min(dists)
         if min_dist > self.failure_dist:
-            rospy.logwarn("!!!TRAVERSAL FAILED!!!")
+            rospy.logwarn("!!!TRAVERSAL FAILED - TOO FAR FROM MAP!!!")
+            return True
+        # checking collision - no movement
+        if self.last_x is not None and self.last_y is not None:
+            dist = np.sqrt((self.last_x - self.curr_x)**2 + (self.last_y - self.curr_y)**2)
+            if dist > self.moving_dist:
+                self.last_x = self.curr_x
+                self.last_y = self.curr_y
+                if self.last_moved_time is None:
+                    rospy.logwarn("Robot movement detected.")
+                self.last_moved_time = rospy.get_rostime()
+        else:
+            self.last_x = self.curr_x
+            self.last_y = self.curr_y
+        if self.last_moved_time is not None and (rospy.get_rostime() - self.last_moved_time) > self.not_moving_trsh:
+            rospy.logwarn("!!!TRAVERSAL FAILED - NOT MOVING FOR" + str(self.not_moving_trsh) + "!!!")
             return True
         return False
 
@@ -246,14 +267,19 @@ class Environment:
         
         while True:
             # main simulation loop
+            self.failure = False
             map_idx, dist = self.sim.reset_sim()
             rospy.sleep(2)
             self.sim.vtr_traversal(self.vtr, map_idx, dist)
             while not self.vtr.is_finished():
                 self.sim.plt_robot()
-                if self.sim.failure_check():
+                self.failure = self.sim.failure_check()
+                if self.failure:
                     break
-            self.sim.traversal_summary()
+            if self.failure:
+                rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
+            else:
+                self.sim.traversal_summary()
             self.vtr.reset()
             self.sim.control_pub.publish(Twist())  # stop robot movement traversing
             rospy.sleep(2)

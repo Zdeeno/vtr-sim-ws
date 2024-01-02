@@ -1,5 +1,6 @@
 import rospy
 from pfvtr.msg import DistancedTwist, MapRepeaterAction, MapRepeaterResult, MapRepeaterGoal, SensorsInput, SensorsOutput
+from pfvtr.srv import StopRepeater
 import actionlib
 import numpy as np
 from abc import ABC, abstractmethod
@@ -48,6 +49,10 @@ class PFVTR(BaseVTR):
         
         self.obs_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self._obs_callback, queue_size=1)
         self.distance_sub = rospy.Subscriber("/pfvtr/repeat/output_dist", SensorsOutput, self._dist_callback, queue_size=1)
+
+        rospy.wait_for_service("pfvtr/stop_repeater")
+        self.stop_pfvtr = rospy.ServiceProxy("pfvtr/stop_repeater", StopRepeater)
+        rospy.logwarn("Service for stopping available")
         
         self.client = actionlib.SimpleActionClient("/pfvtr/repeater", MapRepeaterAction) # for VTR
         rospy.logwarn("PFVTR successfully connected!")
@@ -67,7 +72,7 @@ class PFVTR(BaseVTR):
         return self.finished
 
     def reset(self):
-        # TODO: implement this
+        self.stop_pfvtr(True)
         return
     
     def _obs_callback(self, msg):
