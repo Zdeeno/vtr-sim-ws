@@ -3,8 +3,6 @@ import serial
 import rospy
 import sys
 import rospkg
-# import keyboard
-from pynput import keyboard
 
 from std_msgs.msg import Float32
 from std_msgs.msg import String

@@ -4,6 +4,11 @@ from pfvtr.srv import StopRepeater
 import actionlib
 import numpy as np
 from abc import ABC, abstractmethod
+import rosbag
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Twist, Pose, Quaternion
+import copy
 
 
 class BaseVTR(ABC):
@@ -91,6 +96,119 @@ class PFVTR(BaseVTR):
         self.est_dist = msg.output
         if self.est_dist >= self.target_dist - 0.5:
             self.finished = True
-        
-    
+
+
+class InformedVTR(BaseVTR):
+    def __init__(self):
+        rospy.logwarn("Trying to instantiate PFCTR class")
+        self.map_dir = "/home/zdeeno/.ros/simulator_maps/"
+        self.finished = False
+
+        self.repeating = False
+        self.final_dist = None
+        self.map_traj = None
+        self.map_phis = None
+        self.actions = None
+        self.dists = None
+        self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=5)
+        self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback)
+
+    def repeat_map(self, start=float, end=float, map_name=str):
+        dists, odoms, actions = self.fetch_map(map_name)
+        x = []
+        y = []
+        phis = []
+        for i in range(len(odoms)):
+            x.append(odoms[i].pose.pose.position.x)
+            y.append(odoms[i].pose.pose.position.y)
+            phis.append(euler_from_quaternion([odoms[i].pose.pose.orientation.x, odoms[i].pose.pose.orientation.y, odoms[i].pose.pose.orientation.z, odoms[i].pose.pose.orientation.w])[-1])
+        self.map_phis = np.array(phis)
+        self.map_traj = np.column_stack((x, y))
+        self.dists = dists
+        self.actions = actions
+        self.final_dist = end
+        self.finished = False
+        self.target_dist = end
+        self.repeating = True
+        return
+
+    def is_finished(self):
+        return self.finished
+
+    def reset(self):
+        self.finished = True
+        self.repeating = False
+        self.control_pub.publish(Twist())
+        return
+
+    def fetch_map(self, name):
+        bag = rosbag.Bag(self.map_dir + name + "/" + name + ".bag", "r")
+        dists = []
+        actions = []
+        odoms = []
+        last_odom = None
+        for topic, msg, t in bag.read_messages(topics=["/recorded_actions", "/recorded_odometry"]):
+            if topic == "/recorded_odometry":
+                last_odom = msg
+            if topic == "/recorded_actions" and last_odom is not None:
+                dists.append(float(msg.distance))
+                actions.append(msg.twist)
+                odoms.append(last_odom)
+        dists = np.array(dists)
+        rospy.logwarn("Informed navigator fetched map: " + name)
+        return dists, odoms, actions
+
+    def smallest_angle_diff(self, angle1, angle2):
+        diff = angle2 - angle1
+        diff = (diff + np.pi) % (2 * np.pi) - np.pi
+        return np.where(diff < -np.pi, diff + 2 * np.pi, diff)
+
+    def shortest_distance(self, x1, y1, phi, x2, y2):
+        m = np.tan(phi)
+        c = y1 - m * x1
+        distance = (-m * x2 + y2 + c) / np.sqrt(m ** 2 + 1)
+        return distance
+
+    def odom_callback(self, msg):
+        # get curr position
+        if self.repeating:
+            curr_x = msg.pose.pose.position.x
+            curr_y = msg.pose.pose.position.y
+            a, b, c = euler_from_quaternion(
+                [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z,
+                 msg.pose.pose.orientation.w])
+            curr_phi = c
+            curr_pos = np.array([curr_x, curr_y])
+
+            # find the nearest point in trajectory
+            dists = np.sqrt(np.sum((curr_pos - self.map_traj) ** 2, axis=1))
+            nearest_idx = np.argmin(dists)
+
+            if self.dists[nearest_idx] >= self.final_dist - 0.3:
+                self.repeating = False
+                self.finished = True
+
+            # control policy
+            target_pos = self.map_traj[nearest_idx]
+            target_phi = self.map_phis[nearest_idx]
+
+            displacement = self.shortest_distance(target_pos[0], target_pos[1], target_phi, curr_pos[0], curr_pos[1])
+            phi_diff = self.smallest_angle_diff(target_phi, curr_phi)
+            correction = -phi_diff
+            correction = np.sign(correction) * min(abs(correction), 0.07)
+
+            control_command = copy.copy(self.actions[nearest_idx])
+            control_command.linear.x = max(control_command.linear.x, 1.0)
+            control_command.angular.z += correction
+
+            # rospy.logwarn("Trying to control the robot with displacement " + str(displacement) + " and rotation diff " + str(phi_diff) + "\nCorrection is: " + str(correction))
+            # rospy.logwarn(str(control_command))
+            self.control_pub.publish(control_command)
+        else:
+            self.control_pub.publish(Twist())
+
+
+
+
+
 

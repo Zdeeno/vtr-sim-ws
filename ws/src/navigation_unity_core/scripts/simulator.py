@@ -1,6 +1,7 @@
 import rospy
 import actionlib
 import rosbag
+import rospkg
 import numpy as np
 import os
 from geometry_msgs.msg import Twist, Pose, Quaternion
@@ -10,7 +11,8 @@ from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from vtr import PFVTR
+from vtr import PFVTR, InformedVTR
+from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
 
 np.random.seed(17)
 plt.switch_backend('TKAgg')
@@ -23,9 +25,9 @@ class Map:
         self.name = map_dir.split("/")[-1]
         self.bag_path = os.path.join(map_dir + "/" + self.name + ".bag")
         self.bag = rosbag.Bag(self.bag_path, "r")
-        self.dists, self.odoms, self.actions = self.fetch_map(self.bag)
+        self.dists, self.odoms, self.actions = self.fetch_map()
         
-    def fetch_map(self, bag):
+    def fetch_map(self):
         dists = []
         actions = []
         odoms = []
@@ -99,20 +101,41 @@ class Simulator:
         
         # ros initialization
         rospy.init_node('simulator')
+        rospy.wait_for_service('reset_world')
+        rospy.logwarn("Change world service available.")
         self.marker_pub = rospy.Publisher("/map_viz", MarkerArray, queue_size=5)
         self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose, queue_size=5)
         self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=5)
-        
+        self.reset_world = rospy.ServiceProxy('reset_world', ResetWorld)
+
         # parsing maps
         all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
         self.maps = [Map(p) for p in all_map_dirs]
+        rospack = rospkg.RosPack()
+        self.world_path = rospack.get_path('navigation_unity_core') + "/unity_world_config/"
+        self.avail_worlds = ["default_world.yaml", "rainy_day.yaml"]
+        self.last_world = None
         
         # sub gt position
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback)
  
+    def randomly_change_world(self):
+        wrld = np.random.choice(self.avail_worlds)
+        if wrld == self.last_world:
+            return
+        self.last_world = wrld
+        rospy.logwarn("Changing world to " + str(wrld))
+        wrld_path = self.world_path + wrld
+        with open(wrld_path, 'r') as file:
+            file_content = file.read()
+        self.reset_world(file_content)
+        rospy.sleep(2)
+        return
+
     def reset_sim(self):
         # clear variables
         rospy.logwarn("Starting new round!")
+        self.randomly_change_world()
         self.trav_x = []
         self.trav_y = []
         self.map_traj = None
@@ -251,7 +274,7 @@ class Simulator:
             self.last_x = self.curr_x
             self.last_y = self.curr_y
         if self.last_moved_time is not None and (rospy.get_rostime() - self.last_moved_time) > self.not_moving_trsh:
-            rospy.logwarn("!!!TRAVERSAL FAILED - NOT MOVING FOR" + str(self.not_moving_trsh) + "!!!")
+            rospy.logwarn("!!!TRAVERSAL FAILED - NOT MOVING FOR " + str(self.not_moving_trsh) + "ms!!!")
             return True
         return False
 
@@ -264,6 +287,7 @@ class Environment:
         # start simulation
         self.sim = Simulator(map_dir)
         self.vtr = PFVTR()
+        # self.vtr = InformedVTR()
         
         while True:
             # main simulation loop
@@ -284,7 +308,6 @@ class Environment:
             self.sim.control_pub.publish(Twist())  # stop robot movement traversing
             rospy.sleep(2)
             
-    
 
 if __name__ == '__main__':
     sim = Environment(MAP_DIR)
