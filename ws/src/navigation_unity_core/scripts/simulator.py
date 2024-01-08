@@ -286,7 +286,7 @@ class Environment:
         
         # start simulation
         self.sim = Simulator(map_dir)
-        self.vtr = PFVTR()
+        self.vtr = PFVTR(image_pub=1)
         # self.vtr = InformedVTR()
         
         while True:

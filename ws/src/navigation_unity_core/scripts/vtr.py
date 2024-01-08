@@ -40,8 +40,9 @@ class BaseVTR(ABC):
 
 
 class PFVTR(BaseVTR):
-    def __init__(self):
+    def __init__(self, image_pub):
         rospy.logwarn("Trying to instantiate PFCTR class")
+        self.image_pub = image_pub
         
         self.map_hists = None  # histogram comparing live vs map images
         self.live_diff_hist = None  # curr live img vs prev live img 
@@ -69,7 +70,7 @@ class PFVTR(BaseVTR):
         self.finished = False
         self.target_dist = end
         self.map_start = True
-        curr_action = MapRepeaterGoal(startPos=start, endPos=end, traversals=0, nullCmd=True, imagePub=2, useDist=True, mapName=map_name)
+        curr_action = MapRepeaterGoal(startPos=start, endPos=end, traversals=0, nullCmd=True, imagePub=self.image_pub, useDist=True, mapName=map_name)
         self.client.send_goal(curr_action)
         return
     
@@ -164,9 +165,7 @@ class InformedVTR(BaseVTR):
         return np.where(diff < -np.pi, diff + 2 * np.pi, diff)
 
     def shortest_distance(self, x1, y1, phi, x2, y2):
-        m = np.tan(phi)
-        c = y1 - m * x1
-        distance = (-m * x2 + y2 + c) / np.sqrt(m ** 2 + 1)
+        distance = (np.cos(phi) * (y1 - y2)) - (np.sin(phi) * (x1 - x2))
         return distance
 
     def odom_callback(self, msg):
@@ -182,7 +181,9 @@ class InformedVTR(BaseVTR):
 
             # find the nearest point in trajectory
             dists = np.sqrt(np.sum((curr_pos - self.map_traj) ** 2, axis=1))
+            # dists = abs(self.shortest_distance(self.map_traj[:, 0], self.map_traj[:, 1], self.map_phis, curr_pos[0], curr_pos[1]))
             nearest_idx = np.argmin(dists)
+            # rospy.logwarn("Nearest IDX: " + str(nearest_idx))
 
             if self.dists[nearest_idx] >= self.final_dist - 0.3:
                 self.repeating = False
@@ -194,8 +195,8 @@ class InformedVTR(BaseVTR):
 
             displacement = self.shortest_distance(target_pos[0], target_pos[1], target_phi, curr_pos[0], curr_pos[1])
             phi_diff = self.smallest_angle_diff(target_phi, curr_phi)
-            correction = -phi_diff
-            correction = np.sign(correction) * min(abs(correction), 0.07)
+            correction = -phi_diff + (0.1 * displacement)
+            correction = np.sign(correction) * min(abs(correction), 0.1)
 
             control_command = copy.copy(self.actions[nearest_idx])
             control_command.linear.x = max(control_command.linear.x, 1.0)
