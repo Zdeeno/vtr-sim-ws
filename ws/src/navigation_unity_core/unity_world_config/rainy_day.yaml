@@ -12,8 +12,8 @@ spawn_point_number: 2
 global_light_cycle_enabled: true
 global_light_cycle_start: 10
 global_light_cycle_seconds: 60
-global_light_cycle_min_light: 0.3
-global_light_cycle_max_light: 0.3
+global_light_cycle_min_light: 1.0
+global_light_cycle_max_light: 1.0
 global_light_pitch: 10
 global_light_yaw: 145
 

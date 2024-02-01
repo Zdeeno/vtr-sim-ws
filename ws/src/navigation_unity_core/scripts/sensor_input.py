@@ -13,6 +13,7 @@ from sensor_msgs.msg import Image
 import copy
 import os
 
+
 class Processing:
     def __init__(self):
         self._reinit()
@@ -37,6 +38,7 @@ class Processing:
             mappaths = [mappaths]
         for map_idx, mappath in enumerate(mappaths):
             tmp = []
+            mappath = os.path.expanduser('~') + "/.ros/simulator_maps/" + mappath
             for file in list(os.listdir(mappath)):
                 if file.endswith(".npy"):
                     tmp.append(file[:-4])
