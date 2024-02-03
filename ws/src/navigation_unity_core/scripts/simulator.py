@@ -13,11 +13,16 @@ import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from vtr import PFVTR, InformedVTR
 from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
+from world_generator import WorldGenerator
+import yaml
 
 np.random.seed(17)
 plt.switch_backend('TKAgg')
+home = os.path.expanduser('~')
+home = "/home/rouceto1"
+MAP_DIR = home + "/.ros/simulator_maps"
+scenes = ["mall", "forest"]
 
-MAP_DIR = "/home/zdeeno/.ros/simulator_maps"
 
 class Map:
     def __init__(self, map_dir):
@@ -26,7 +31,7 @@ class Map:
         self.bag_path = os.path.join(map_dir + "/" + self.name + ".bag")
         self.bag = rosbag.Bag(self.bag_path, "r")
         self.dists, self.odoms, self.actions = self.fetch_map()
-        
+
     def fetch_map(self):
         dists = []
         actions = []
@@ -77,7 +82,7 @@ class Map:
 
 
 class Simulator:
-    def __init__(self, map_dir):
+    def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5):
         self.failure_dist = 5.0
         self.target_dist = 0.0
         self.not_moving_trsh = rospy.Duration(5)
@@ -98,7 +103,11 @@ class Simulator:
         self.init_pos = None
 
         self.map_traj = None
-        
+
+        self.spawn_error_weight_pose = pose_err_weight
+        self.spawn_error_weight_rot = rot_err_weight
+        self.spawn_distance_weight = dist_weight
+
         # ros initialization
         rospy.init_node('simulator')
         rospy.wait_for_service('reset_world')
@@ -112,30 +121,14 @@ class Simulator:
         all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
         self.maps = [Map(p) for p in all_map_dirs]
         rospack = rospkg.RosPack()
-        self.world_path = rospack.get_path('navigation_unity_core') + "/unity_world_config/"
-        self.avail_worlds = ["default_world.yaml", "rainy_day.yaml"]
-        self.last_world = None
-        
         # sub gt position
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback)
- 
-    def randomly_change_world(self):
-        wrld = np.random.choice(self.avail_worlds)
-        if wrld == self.last_world:
-            return
-        self.last_world = wrld
-        rospy.logwarn("Changing world to " + str(wrld))
-        wrld_path = self.world_path + wrld
-        with open(wrld_path, 'r') as file:
-            file_content = file.read()
-        self.reset_world(file_content)
-        rospy.sleep(2)
-        return
+        ## init generator
+        self.world_path = rospack.get_path('navigation_unity_core') + "/unity_world_config/"
+        self.world_generator = WorldGenerator(service=self.reset_world, world_path=self.world_path, scenes=scenes)
 
-    def reset_sim(self):
+    def reset_sim(self, time=None, scene=None):
         # clear variables
-        rospy.logwarn("Starting new round!")
-        self.randomly_change_world()
         self.trav_x = []
         self.trav_y = []
         self.map_traj = None
@@ -144,13 +137,28 @@ class Simulator:
         plt.ion()
         self.fig, self.ax = plt.subplots()
         self.ax.grid()
-        # choose new map
-        new_map_idx = np.random.randint(len(self.maps))
+        rospy.logwarn("Starting new round!")
+        spawn_point = None
+        # change world
+        if time is not None and scene is not None:
+            day_minutes, day_hours, day_progress_speed, fog_density, spawn_point = self.world_generator.time_based_change_world(time, scene)
+            rospy.logwarn("Time based change to " + str(day_hours) + ":" + str(day_minutes) + " with speed " + str(
+                day_progress_speed) + " and fog " + str(fog_density)+  " and spawn point " + str(spawn_point))
+            new_map_idx = scene
+
+        else:
+            scene = self.world_generator.randomly_change_world()
+            new_map_idx = np.random.randint(len(self.maps))
+
         self.curr_map_idx = new_map_idx
+
         # plot map and teleport the robot
-        self.plt_trajectory(new_map_idx)
-        self.target_dist = self.maps[new_map_idx].dists[-1]
-        dist = self.teleport(new_map_idx, pos_err=1.0, rot_err=np.pi / 4.0)
+        self.plt_trajectory(self.curr_map_idx)
+        self.target_dist = self.maps[self.curr_map_idx].dists[-1]
+        if spawn_point is not None:
+            dist = 0.0
+        else:
+            dist = self.teleport(self.maps[self.curr_map_idx])
         self.last_moved_time = None
         self.last_x = None
         self.last_y = None
@@ -187,29 +195,34 @@ class Simulator:
     def odom_callback(self, msg):
         self.curr_x = msg.pose.pose.position.x
         self.curr_y = msg.pose.pose.position.y
-        a, b, c = euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+        a, b, c = euler_from_quaternion(
+            [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z,
+             msg.pose.pose.orientation.w])
         self.curr_phi = c
 
-    def teleport(self, map_idx, pos_err=0.0, rot_err=0.0):
-        pct_dist = 0.5 * np.random.rand(1)[0]
-        starting_dist_idx = int(len(self.maps[map_idx].odoms) * pct_dist)
-        odom_pos = copy.copy(self.maps[map_idx].odoms[starting_dist_idx])
-        self.init_pos = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
+    def teleport(self, map):
+        pct_dist = self.spawn_distance_weight * np.random.rand(1)[0]
+        starting_dist_idx = int(len(map.odoms) * pct_dist)
+        odom_pos = copy.copy(map.odoms[starting_dist_idx])
         pose_to = Pose()
         diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
+
+        self.init_pos = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         self.init_displacement = (diff_x, diff_y)
         self.init_rot_error = diff_phi
         # randomize the spawning
-        pose_to.position.x = odom_pos.pose.pose.position.x + diff_x * pos_err       
-        pose_to.position.y = odom_pos.pose.pose.position.y + diff_y * pos_err
-        a, b, c = euler_from_quaternion([odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z, odom_pos.pose.pose.orientation.w])
-        target_quat = quaternion_from_euler(a, b, c + diff_phi * rot_err)
+        pose_to.position.x = odom_pos.pose.pose.position.x + diff_x * self.spawn_error_weight_pose
+        pose_to.position.y = odom_pos.pose.pose.position.y + diff_y * self.spawn_error_weight_pose
+        a, b, c = euler_from_quaternion(
+            [odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z,
+             odom_pos.pose.pose.orientation.w])
+        target_quat = quaternion_from_euler(a, b, c + diff_phi * self.spawn_error_weight_rot)
         pose_to.orientation = Quaternion(*target_quat)
-        pose_to.position.z = odom_pos.pose.pose.position.z + 0.25 # spawn bit higher to avoid textures        
+        pose_to.position.z = odom_pos.pose.pose.position.z + 0.25  # spawn bit higher to avoid textures
         self.teleport_pub.publish(pose_to)
-        rospy.logwarn("Teleporting robot!")
-        return self.maps[map_idx].dists[starting_dist_idx]
-        
+        rospy.logwarn("Teleporting robot to " + str(pose_to.position.x) + " " + str(pose_to.position.y) + " " + str(pose_to.position.z) )
+        return map.dists[starting_dist_idx]
+
     def vtr_traversal(self, vtr, map_idx, start_pos):
         rospy.logwarn("Traversing using VTR at distance " + str(start_pos))
         map_name = self.maps[map_idx].name
@@ -217,19 +230,25 @@ class Simulator:
         rospy.loginfo("Starting traversal of map: " + map_name)
         vtr.repeat_map(start_pos, end_pos, map_name)
         return
-    
+
     def traversal_summary(self):
         odom_pos = copy.copy(self.maps[self.curr_map_idx].odoms[-1])
         last_x, last_y = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
-        a, b, last_phi = euler_from_quaternion([odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z, odom_pos.pose.pose.orientation.w])
+        a, b, last_phi = euler_from_quaternion(
+            [odom_pos.pose.pose.orientation.x, odom_pos.pose.pose.orientation.y, odom_pos.pose.pose.orientation.z,
+             odom_pos.pose.pose.orientation.w])
         last_phi_err = self.smallest_angle_diff(last_phi, self.curr_phi)
         final_displacement = (self.curr_x - last_x, self.curr_y - last_y)
-        rospy.logwarn("\n--------- Summary ---------:\nInit displacement distance/rotation " + str(self.init_displacement) + "/" + str(self.init_rot_error) + "\nFinal displacement distance/rotation " + str(final_displacement) + "/" + str(last_phi_err) + "\nFinal Chamfer dist: " + str(self._chamfer_dist()) + "\n---------------------------")
-   
+        rospy.logwarn("\n--------- Summary ---------:\nInit displacement distance/rotation " + str(
+            self.init_displacement) + "/" + str(self.init_rot_error) + "\n" +
+                      "Final displacement distance/rotation " + str(final_displacement) + "/" + str(
+            last_phi_err) + "\n" +
+                      "Final Chamfer dist: " + str(self._chamfer_dist()) + "\n---------------------------")
+
     def smallest_angle_diff(self, angle1, angle2):
         diff = angle2 - angle1
         diff = (diff + np.pi) % (2 * np.pi) - np.pi
-        return np.where(diff < -np.pi, diff + 2 * np.pi, diff) 
+        return np.where(diff < -np.pi, diff + 2 * np.pi, diff)
 
     def _chamfer_dist(self):
         trav_x = np.array(self.trav_x)
@@ -263,7 +282,7 @@ class Simulator:
             return True
         # checking collision - no movement
         if self.last_x is not None and self.last_y is not None:
-            dist = np.sqrt((self.last_x - self.curr_x)**2 + (self.last_y - self.curr_y)**2)
+            dist = np.sqrt((self.last_x - self.curr_x) ** 2 + (self.last_y - self.curr_y) ** 2)
             if dist > self.moving_dist:
                 self.last_x = self.curr_x
                 self.last_y = self.curr_y
@@ -280,34 +299,56 @@ class Simulator:
 
 
 class Environment:
-    def __init__(self, map_dir):
+    def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5):
         # subscribe observations
+        self.map_idx = None
+        self.failure = None
+        self.dist = None
         self.sim = None
-        
+
         # start simulation
-        self.sim = Simulator(map_dir)
+        self.sim = Simulator(map_dir, pose_err_weight=pose_err_weight, rot_err_weight=rot_err_weight,
+                             dist_weight=dist_weight)
         self.vtr = PFVTR(image_pub=1)
         # self.vtr = InformedVTR()
-        
-        while True:
-            # main simulation loop
-            self.failure = False
-            map_idx, dist = self.sim.reset_sim()
-            rospy.sleep(2)
-            self.sim.vtr_traversal(self.vtr, map_idx, dist)
-            while not self.vtr.is_finished():
-                self.sim.plt_robot()
-                self.failure = self.sim.failure_check()
-                if self.failure:
-                    break
+
+    def round_setup(self, time=None, scene=None):
+        self.failure = False
+        self.map_idx, self.dist = self.sim.reset_sim(time, scene)
+        rospy.sleep(3)
+
+    def simulation_forward(self):
+        # main simulation loop
+        self.sim.vtr_traversal(self.vtr, self.map_idx, self.dist)
+        while not self.vtr.is_finished():
+            self.sim.plt_robot()
+            self.failure = self.sim.failure_check()
             if self.failure:
-                rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
-            else:
-                self.sim.traversal_summary()
-            self.vtr.reset()
-            self.sim.control_pub.publish(Twist())  # stop robot movement traversing
-            rospy.sleep(2)
-            
+                break
+        if self.failure:
+            rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
+        else:
+            self.sim.traversal_summary()
+        self.vtr.reset()
+        self.sim.control_pub.publish(Twist())  # stop robot movement traversing
+        rospy.sleep(2)
+    def test_setups(self):
+        self.round_setup(0, 0)
+        rospy.sleep(30)
+        self.round_setup(0, 1)
+        rospy.sleep(30)
+        #self.round_setup(0, 1)
+        #self.round_setup(1.5, 0)
+       # self.round_setup(1.5, 1)
+        #self.round_setup(1.8, 0)
+        #self.round_setup(1.8, 1)
+
 
 if __name__ == '__main__':
-    sim = Environment(MAP_DIR)
+    sim = Environment(MAP_DIR, 0, 0, 0)
+    time = 0.0
+    sim.test_setups()
+    while True:
+        pass
+        #sim.round_setup(time=np.random.randint(23), scene=0)
+        #sim.simulation_forward()
