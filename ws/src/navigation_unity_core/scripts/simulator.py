@@ -11,7 +11,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from vtr import PFVTR, InformedVTR
+from vtr import PFVTR, InformedVTR, NeuralNet
 from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
 from world_generator import WorldGenerator
 import yaml
@@ -19,10 +19,10 @@ import yaml
 np.random.seed(17)
 plt.switch_backend('TKAgg')
 home = os.path.expanduser('~')
-home = "/home/rouceto1"
-MAP_DIR = home + "/.ros/simulator_maps"
 scenes = ["mall", "forest"]
 
+HOME = os.path.expanduser('~')
+MAP_DIR = HOME + "/.ros/simulator_maps"
 
 class Map:
     def __init__(self, map_dir):
@@ -75,19 +75,26 @@ class Map:
     def get_plt_array(self):
         x = []
         y = []
+        phi = []
         for i in range(len(self.odoms)):
             x.append(self.odoms[i].pose.pose.position.x)
             y.append(self.odoms[i].pose.pose.position.y)
-        return x, y
+            _, _, c = euler_from_quaternion([self.odoms[i].pose.pose.orientation.x,
+                                             self.odoms[i].pose.pose.orientation.y,
+                                             self.odoms[i].pose.pose.orientation.z,
+                                             self.odoms[i].pose.pose.orientation.w])
+            phi.append(c)
+        return x, y, phi
 
 
 class Simulator:
     def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5):
         self.failure_dist = 5.0
+        self.failure_angle = np.pi / 2.0
         self.target_dist = 0.0
         self.not_moving_trsh = rospy.Duration(5)
         self.last_moved_time = None
-        self.moving_dist = 0.1
+        self.moving_dist = 1.0
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
@@ -104,17 +111,18 @@ class Simulator:
 
         self.map_traj = None
 
-        self.spawn_error_weight_pose = pose_err_weight
-        self.spawn_error_weight_rot = rot_err_weight
+        self.spawn_error_weight_pose = self.teleport_displacement
+        self.spawn_error_weight_rot = self.teleport_rotation
         self.spawn_distance_weight = dist_weight
-
+        self.map_phis = None
+        
         # ros initialization
         rospy.init_node('simulator')
         rospy.wait_for_service('reset_world')
         rospy.logwarn("Change world service available.")
         self.marker_pub = rospy.Publisher("/map_viz", MarkerArray, queue_size=5)
-        self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose, queue_size=5)
-        self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=5)
+        self.teleport_pub = rospy.Publisher("/robot1/chassis_link/teleport", Pose, queue_size=1)
+        self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=1)
         self.reset_world = rospy.ServiceProxy('reset_world', ResetWorld)
 
         # parsing maps
@@ -122,10 +130,11 @@ class Simulator:
         self.maps = [Map(p) for p in all_map_dirs]
         rospack = rospkg.RosPack()
         # sub gt position
-        self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback)
         ## init generator
         self.world_path = rospack.get_path('navigation_unity_core') + "/unity_world_config/"
         self.world_generator = WorldGenerator(service=self.reset_world, world_path=self.world_path, scenes=scenes)
+        self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback, queue_size=1)
+
 
     def reset_sim(self, time=None, scene=None):
         # clear variables
@@ -163,9 +172,9 @@ class Simulator:
         self.last_x = None
         self.last_y = None
         rospy.sleep(1)  # avoid plotting errors
-        return new_map_idx, dist
+        return new_map_idx, self.maps[new_map_idx].name, dist
 
-    def plt_robot(self):
+    def plt_robot(self, save_fig=False, idx=0):
         # TODO: Throw away trav coords for long traversals
         if self.curr_x is not None and self.curr_y is not None:
             self.trav_x.append(self.curr_x)
@@ -179,15 +188,19 @@ class Simulator:
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
             self.plot_counter = 0
+        if save_fig:
+            rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
+            self.fig.savefig(HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
     
     def rviz_trajectory(self, map_idx):
         marker_pub.publish(self.maps[map_idx].get_rviz_marker())
         rospy.logwarn("Markers published!")
 
     def plt_trajectory(self, map_idx):
-        map_traj_x, map_traj_y = self.maps[map_idx].get_plt_array()
+        map_traj_x, map_traj_y, map_traj_phi = self.maps[map_idx].get_plt_array()
         self.ax.plot(map_traj_x, map_traj_y)
         self.map_traj = np.column_stack((map_traj_x, map_traj_y))
+        self.map_phis = np.array(map_traj_phi)
         plt.show()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -232,6 +245,7 @@ class Simulator:
         return
 
     def traversal_summary(self):
+        # TODO: use class variables which have precalculated trajectory
         odom_pos = copy.copy(self.maps[self.curr_map_idx].odoms[-1])
         last_x, last_y = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         a, b, last_phi = euler_from_quaternion(
@@ -276,8 +290,9 @@ class Simulator:
         # checking distance from trajectory
         curr_pos = np.array([self.curr_x, self.curr_y])
         dists = np.sqrt(np.sum((curr_pos - self.map_traj) ** 2, axis=1))
-        min_dist = np.min(dists)
-        if min_dist > self.failure_dist:
+        min_dist_arg = np.argmin(dists)
+        rot_diff = self.smallest_angle_diff(self.curr_phi, self.map_phis[min_dist_arg])
+        if dists[min_dist_arg] > self.failure_dist or abs(rot_diff) > self.failure_angle:
             rospy.logwarn("!!!TRAVERSAL FAILED - TOO FAR FROM MAP!!!")
             return True
         # checking collision - no movement
@@ -305,14 +320,24 @@ class Environment:
         self.failure = None
         self.dist = None
         self.sim = None
+        self.traversal_idx = 0
+
 
         # start simulation
         self.sim = Simulator(map_dir, pose_err_weight=pose_err_weight, rot_err_weight=rot_err_weight,
                              dist_weight=dist_weight)
-        self.vtr = PFVTR(image_pub=1)
+        # informed policy for benchmarking
         # self.vtr = InformedVTR()
 
+        # PFVTR policy
+        # self.vtr = PFVTR(image_pub=1)
+
+        # Neural network controller
+        self.vtr = NeuralNet(training=True)
+
     def round_setup(self, time=None, scene=None):
+        self.traversal_idx += 1
+
         self.failure = False
         self.map_idx, self.dist = self.sim.reset_sim(time, scene)
         rospy.sleep(3)
@@ -329,6 +354,7 @@ class Environment:
             rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
         else:
             self.sim.traversal_summary()
+        self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
         self.vtr.reset()
         self.sim.control_pub.publish(Twist())  # stop robot movement traversing
         rospy.sleep(2)
@@ -337,11 +363,9 @@ class Environment:
         rospy.sleep(30)
         self.round_setup(0, 1)
         rospy.sleep(30)
-        #self.round_setup(0, 1)
-        #self.round_setup(1.5, 0)
-       # self.round_setup(1.5, 1)
-        #self.round_setup(1.8, 0)
-        #self.round_setup(1.8, 1)
+
+
+
 
 
 if __name__ == '__main__':
