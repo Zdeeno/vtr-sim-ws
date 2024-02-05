@@ -16,6 +16,7 @@ from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldR
 from world_generator import WorldGenerator
 import yaml
 import time
+
 np.random.seed(17)
 plt.switch_backend('TKAgg')
 home = os.path.expanduser('~')
@@ -46,7 +47,8 @@ class Map:
                 actions.append(msg.twist)
                 odoms.append(last_odom)
         dists = np.array(dists)
-        rospy.logwarn("Map " + self.name + " fetched with " + str(len(dists)) + " points " + str(len(actions)) + " actions " + str(len(odoms)) + " odometries")
+        rospy.logwarn("Map " + self.name + " fetched with " + str(len(dists)) + " points " + str(
+            len(actions)) + " actions " + str(len(odoms)) + " odometries")
         return dists, odoms, actions
 
     def get_rviz_marker(self):
@@ -111,7 +113,7 @@ class Simulator:
         self.init_pos = None
 
         self.map_traj = None
-        #might be wrong:::::
+        # might be wrong:::::
         self.teleport_displacement = pose_err_weight
         self.teleport_rotation = rot_err_weight
         self.spawn_error_weight_pose = self.teleport_displacement
@@ -153,7 +155,7 @@ class Simulator:
         # change world
         if day_time is not None and scene is not None:
             day_minutes, day_hours, day_progress_speed, fog_density, spawn_point = self.world_generator.time_based_change_world(
-                day_time, scene, teleport,fog_density = 0.0, lights = False)
+                day_time, scene, teleport, fog_density=0.0, lights=False)
             rospy.logwarn("Time based change to " + str(day_hours) + ":" + str(day_minutes) + " with speed " + str(
                 day_progress_speed) + " and fog " + str(fog_density) + " and spawn point " + str(spawn_point))
             new_map_idx = scene
@@ -334,7 +336,7 @@ class Environment:
         self.traversal_idx += 1
 
         self.failure = False
-        self.map_idx, self.map_name, self.dist = self.sim.reset_sim(day_time, scene,random_teleport)
+        self.map_idx, self.map_name, self.dist = self.sim.reset_sim(day_time, scene, random_teleport)
         time.sleep(3)
 
     def simulation_forward(self):
@@ -356,9 +358,9 @@ class Environment:
 
     def test_setups(self):
         self.round_setup(0.5, 0)
-        #time.sleep(30)
-        #self.round_setup(12, 1)
-        #time.sleep(30)
+        # time.sleep(30)
+        # self.round_setup(12, 1)
+        # time.sleep(30)
 
 
 if __name__ == '__main__':
@@ -376,9 +378,9 @@ if __name__ == '__main__':
     # vtr = NeuralNet(training=True)
 
     sim = Environment(simulator, vtr)
-    day_time = 0.0 # daylight between 0.21 to 0.95
-    sim.test_setups()
+    day_time = 0.0  # daylight between 0.21 to 0.95
+    # sim.test_setups()
     while True:
         pass
-        sim.round_setup(day_time=np.random.randint(24), scene=np.random.randint(2), random_teleport=False)
+        sim.round_setup(day_time=np.random.uniform(0.21, 0.95), scene=np.random.randint(2), random_teleport=True)
         sim.simulation_forward()
