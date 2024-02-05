@@ -15,14 +15,15 @@ from vtr import PFVTR, InformedVTR, NeuralNet
 from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
 from world_generator import WorldGenerator
 import yaml
-
+import time
 np.random.seed(17)
 plt.switch_backend('TKAgg')
 home = os.path.expanduser('~')
-scenes = ["mall", "forest"]
+scenes = ["forest", "mall"]
 
 HOME = os.path.expanduser('~')
-MAP_DIR = HOME + "/.ros/simulator_maps"
+MAP_DIR = HOME + "/.ros"
+
 
 class Map:
     def __init__(self, map_dir):
@@ -40,14 +41,14 @@ class Map:
         for topic, msg, t in self.bag.read_messages(topics=["/recorded_actions", "/recorded_odometry"]):
             if topic == "/recorded_odometry":
                 last_odom = msg
-            if topic == "/recorded_actions" and last_odom is not None: 
+            if topic == "/recorded_actions" and last_odom is not None:
                 dists.append(float(msg.distance))
                 actions.append(msg.twist)
                 odoms.append(last_odom)
         dists = np.array(dists)
-        rospy.logwarn("Map " + self.name + " fetched.")
+        rospy.logwarn("Map " + self.name + " fetched with " + str(len(dists)) + " points " + str(len(actions)) + " actions " + str(len(odoms)) + " odometries")
         return dists, odoms, actions
-        
+
     def get_rviz_marker(self):
         m_arr = MarkerArray()
         for i in range(len(self.odoms)):
@@ -98,7 +99,7 @@ class Simulator:
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
-        
+
         self.curr_x = None
         self.curr_y = None
         self.last_x = None
@@ -110,12 +111,14 @@ class Simulator:
         self.init_pos = None
 
         self.map_traj = None
-
+        #might be wrong:::::
+        self.teleport_displacement = pose_err_weight
+        self.teleport_rotation = rot_err_weight
         self.spawn_error_weight_pose = self.teleport_displacement
         self.spawn_error_weight_rot = self.teleport_rotation
         self.spawn_distance_weight = dist_weight
         self.map_phis = None
-        
+
         # ros initialization
         rospy.init_node('simulator')
         rospy.wait_for_service('reset_world')
@@ -126,7 +129,7 @@ class Simulator:
         self.reset_world = rospy.ServiceProxy('reset_world', ResetWorld)
 
         # parsing maps
-        all_map_dirs = [ f.path for f in os.scandir(map_dir) if f.is_dir() ]
+        all_map_dirs = [f.path for f in os.scandir(map_dir) if f.is_dir() and "vtr" in f.path]
         self.maps = [Map(p) for p in all_map_dirs]
         rospack = rospkg.RosPack()
         # sub gt position
@@ -135,8 +138,7 @@ class Simulator:
         self.world_generator = WorldGenerator(service=self.reset_world, world_path=self.world_path, scenes=scenes)
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback, queue_size=1)
 
-
-    def reset_sim(self, time=None, scene=None):
+    def reset_sim(self, day_time=None, scene=None, teleport=None):
         # clear variables
         self.trav_x = []
         self.trav_y = []
@@ -149,10 +151,11 @@ class Simulator:
         rospy.logwarn("Starting new round!")
         spawn_point = None
         # change world
-        if time is not None and scene is not None:
-            day_minutes, day_hours, day_progress_speed, fog_density, spawn_point = self.world_generator.time_based_change_world(time, scene)
+        if day_time is not None and scene is not None:
+            day_minutes, day_hours, day_progress_speed, fog_density, spawn_point = self.world_generator.time_based_change_world(
+                day_time, scene, teleport,fog_density = 0.0, lights = False)
             rospy.logwarn("Time based change to " + str(day_hours) + ":" + str(day_minutes) + " with speed " + str(
-                day_progress_speed) + " and fog " + str(fog_density)+  " and spawn point " + str(spawn_point))
+                day_progress_speed) + " and fog " + str(fog_density) + " and spawn point " + str(spawn_point))
             new_map_idx = scene
 
         else:
@@ -164,7 +167,7 @@ class Simulator:
         # plot map and teleport the robot
         self.plt_trajectory(self.curr_map_idx)
         self.target_dist = self.maps[self.curr_map_idx].dists[-1]
-        if spawn_point is not None:
+        if teleport is None or not teleport:
             dist = 0.0
         else:
             dist = self.teleport(self.maps[self.curr_map_idx])
@@ -191,7 +194,7 @@ class Simulator:
         if save_fig:
             rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
             self.fig.savefig(HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
-    
+
     def rviz_trajectory(self, map_idx):
         marker_pub.publish(self.maps[map_idx].get_rviz_marker())
         rospy.logwarn("Markers published!")
@@ -233,7 +236,8 @@ class Simulator:
         pose_to.orientation = Quaternion(*target_quat)
         pose_to.position.z = odom_pos.pose.pose.position.z + 0.25  # spawn bit higher to avoid textures
         self.teleport_pub.publish(pose_to)
-        rospy.logwarn("Teleporting robot to " + str(pose_to.position.x) + " " + str(pose_to.position.y) + " " + str(pose_to.position.z) )
+        rospy.logwarn("Teleporting robot to " + str(pose_to.position.x) + " " + str(pose_to.position.y) + " " + str(
+            pose_to.position.z))
         return map.dists[starting_dist_idx]
 
     def vtr_traversal(self, vtr, map_idx, start_pos):
@@ -314,33 +318,24 @@ class Simulator:
 
 
 class Environment:
-    def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5):
+    def __init__(self, simulator, vtr):
         # subscribe observations
         self.map_idx = None
         self.failure = None
         self.dist = None
         self.sim = None
+        self.map_name = None
         self.traversal_idx = 0
 
+        self.sim = simulator
+        self.vtr = vtr
 
-        # start simulation
-        self.sim = Simulator(map_dir, pose_err_weight=pose_err_weight, rot_err_weight=rot_err_weight,
-                             dist_weight=dist_weight)
-        # informed policy for benchmarking
-        # self.vtr = InformedVTR()
-
-        # PFVTR policy
-        # self.vtr = PFVTR(image_pub=1)
-
-        # Neural network controller
-        self.vtr = NeuralNet(training=True)
-
-    def round_setup(self, time=None, scene=None):
+    def round_setup(self, day_time=None, scene=None, random_teleport=None):
         self.traversal_idx += 1
 
         self.failure = False
-        self.map_idx, self.dist = self.sim.reset_sim(time, scene)
-        rospy.sleep(3)
+        self.map_idx, self.map_name, self.dist = self.sim.reset_sim(day_time, scene,random_teleport)
+        time.sleep(3)
 
     def simulation_forward(self):
         # main simulation loop
@@ -357,22 +352,33 @@ class Environment:
         self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
         self.vtr.reset()
         self.sim.control_pub.publish(Twist())  # stop robot movement traversing
-        rospy.sleep(2)
+        time.sleep(2)
+
     def test_setups(self):
-        self.round_setup(0, 0)
-        rospy.sleep(30)
-        self.round_setup(0, 1)
-        rospy.sleep(30)
-
-
-
+        self.round_setup(0.5, 0)
+        #time.sleep(30)
+        #self.round_setup(12, 1)
+        #time.sleep(30)
 
 
 if __name__ == '__main__':
-    sim = Environment(MAP_DIR, 0, 0, 0)
-    time = 0.0
+
+    # start simulation
+    simulator = Simulator(MAP_DIR, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0,
+                          dist_weight=0.5)
+    # informed policy for benchmarking
+    # vtr = InformedVTR()
+
+    # PFVTR policy
+    vtr = PFVTR(image_pub=1)
+
+    # Neural network controller
+    # vtr = NeuralNet(training=True)
+
+    sim = Environment(simulator, vtr)
+    day_time = 0.0 # daylight between 0.21 to 0.95
     sim.test_setups()
     while True:
         pass
-        #sim.round_setup(time=np.random.randint(23), scene=0)
-        #sim.simulation_forward()
+        sim.round_setup(day_time=np.random.randint(24), scene=np.random.randint(2), random_teleport=False)
+        sim.simulation_forward()
