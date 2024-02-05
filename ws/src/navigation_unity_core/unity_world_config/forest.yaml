@@ -1,0 +1,37 @@
+world_name: "forest1" # [mall, forest] Originaly forest1 and station(different map)
+
+session_seed: 42
+
+reload_scene: true
+respawn_random_objects: true
+
+robot_type: "jackal" # generic_space = gravity-disabled floating camera and IMU, jackal = ClearPath robotics Jackal with Twist controller
+spawn_area: "center" #example areas: forest1:center, station:courtyard
+spawn_point_number: 0
+
+time_hour: 13
+time_minute: 0
+time_progress_speed: 0 #3500.0 # [0,3600]0.0 = no time progression, 1 = real time, 2 = double speed, etc.
+
+wind_intensity: 4
+
+##I dont think clouds work
+clouds_enabled: true
+clouds_height: 300
+clouds_density: 0.3 # 0 = no clouds, 1 = full overcast
+clouds_particle_scale: 1 # 1 = default, use e.g. 10 for low density of large particles
+clouds_brightness: 0.8 # 0 = black, 1 = white/color based on the gameobjects settings
+clouds_average_velocity_x: 100 #in meters per second in the x direction of Unitys coord system
+clouds_average_velocity_z: 100 #in meters per second in the z direction of Unitys coord system
+
+distracting_particles_enabled: true # dust from ground, 
+
+rain_enabled: false # rain, 
+
+dynamic_ground_objects_numerosity: 1 # 0 = disabled, 1 = intended amount if enabled, >1 = just for any silliness you want
+dynamic_nonground_objects_numerosity: 1 # 0 = disabled, 1 = intended amount if enabled, >1 = just for any silliness you want
+
+dynamic_light_effects_enabled: false
+
+fog_enabled: false
+fog_density: 0.02

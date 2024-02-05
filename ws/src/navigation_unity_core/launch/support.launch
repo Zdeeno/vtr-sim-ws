@@ -24,7 +24,7 @@
 </group>
 
    <node pkg="navigation_unity_core" type="tf2odom.py" name="repub_odom" />
-
+  <!--
    <node pkg="image_transport" type="republish" name="image_decompressor" args="compressed in:=/robot1/camera1/image raw out:=/cam_repub"/>
-
+  -->
 </launch>
