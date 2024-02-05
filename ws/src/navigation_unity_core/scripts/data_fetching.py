@@ -53,7 +53,7 @@ class DataFetching:
         else:
             out_hists = hists[0]
             out_map_trans = map_trans[0]
-        self.data = (out_hists, out_map_trans)
+        self.data = (out_hists, out_map_trans, live_hist)
         self.has_new_obs = True
 
     def get_live_data(self):

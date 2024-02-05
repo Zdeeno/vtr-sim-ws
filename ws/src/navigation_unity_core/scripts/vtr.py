@@ -1,5 +1,4 @@
 import rospy
-import torch.nn
 from pfvtr.msg import DistancedTwist, MapRepeaterAction, MapRepeaterResult, MapRepeaterGoal, SensorsInput, SensorsOutput
 from pfvtr.srv import StopRepeater
 import actionlib
@@ -13,6 +12,7 @@ import copy
 from sensor_input import Processing
 from data_fetching import DataFetching
 import torch as t
+from nn_model import FeedForward
 
 
 class BaseVTR(ABC):
@@ -117,6 +117,10 @@ class InformedVTR(BaseVTR):
         self.map_phis = None
         self.actions = None
         self.dists = None
+        self.curr_x = None
+        self.curr_y = None
+        self.curr_phi = None
+        self.map_start_dist = None
         self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=5)
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback, queue_size=1)
 
@@ -129,6 +133,7 @@ class InformedVTR(BaseVTR):
             x.append(odoms[i].pose.pose.position.x)
             y.append(odoms[i].pose.pose.position.y)
             phis.append(euler_from_quaternion([odoms[i].pose.pose.orientation.x, odoms[i].pose.pose.orientation.y, odoms[i].pose.pose.orientation.z, odoms[i].pose.pose.orientation.w])[-1])
+        self.map_start_dist = start
         self.map_phis = np.array(phis)
         self.map_traj = np.column_stack((x, y))
         self.dists = dists
@@ -146,6 +151,7 @@ class InformedVTR(BaseVTR):
         self.finished = True
         self.curr_dist = None
         self.repeating = False
+        self.map_start_dist = None
         self.control_pub.publish(Twist())
         return
 
@@ -176,40 +182,40 @@ class InformedVTR(BaseVTR):
         return distance
 
     def get_control_command(self, msg):
-        curr_x = msg.pose.pose.position.x
-        curr_y = msg.pose.pose.position.y
+        self.curr_x = msg.pose.pose.position.x
+        self.curr_y = msg.pose.pose.position.y
         a, b, c = euler_from_quaternion(
             [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z,
              msg.pose.pose.orientation.w])
-        curr_phi = c
-        curr_pos = np.array([curr_x, curr_y])
+        self.curr_phi = c
+        curr_pos = np.array([self.curr_x, self.curr_y])
 
         # rospy.logwarn("curr pos: " + str(curr_pos))
 
         # find the nearest point in trajectory
         dists = np.sqrt(np.sum((curr_pos - self.map_traj) ** 2, axis=1))
         # dists = abs(self.shortest_distance(self.map_traj[:, 0], self.map_traj[:, 1], self.map_phis, curr_pos[0], curr_pos[1]))
-        nearest_idx = np.argmin(dists)
-        self.curr_dist = self.dists[nearest_idx]
+        self.nearest_idx = np.argmin(dists)
+        self.curr_dist = self.dists[self.nearest_idx]
         # rospy.logwarn("Nearest IDX: " + str(nearest_idx))
 
-        if self.dists[nearest_idx] >= self.final_dist - 0.3:
+        if self.dists[self.nearest_idx] >= self.final_dist - 0.3:
             self.repeating = False
             self.finished = True
             return None
 
         # control policy
-        target_pos = self.map_traj[nearest_idx]
-        target_phi = self.map_phis[nearest_idx]
+        target_pos = self.map_traj[self.nearest_idx]
+        target_phi = self.map_phis[self.nearest_idx]
 
         displacement = self.shortest_distance(target_pos[0], target_pos[1], target_phi, curr_pos[0], curr_pos[1])
-        phi_diff = self.smallest_angle_diff(target_phi, curr_phi)
+        phi_diff = self.smallest_angle_diff(target_phi, self.curr_phi)
         correction = -phi_diff + (0.1 * displacement)
         correction = np.sign(correction) * min(abs(correction), 0.2)
 
         control_command = Twist()
-        control_command.linear.x = max(self.actions[nearest_idx].linear.x, 1.0)
-        control_command.angular.z = self.actions[nearest_idx].angular.z + correction
+        control_command.linear.x = max(self.actions[self.nearest_idx].linear.x, 1.0)
+        control_command.angular.z = self.actions[self.nearest_idx].angular.z + correction
 
         # rospy.logwarn("Trying to control the robot with displacement " + str(displacement) + " and rotation diff " + str(phi_diff) + "\nCorrection is: " + str(correction))
         # rospy.logwarn(str(control_command))
@@ -220,8 +226,8 @@ class InformedVTR(BaseVTR):
 
     def odom_callback(self, msg):
         # get curr position
-        control_command = self.get_control_command(msg)
         if self.repeating:
+            control_command = self.get_control_command(msg)
             self.control_pub.publish(control_command)
         else:
             self.control_pub.publish(Twist())
@@ -232,7 +238,7 @@ class NeuralNet(InformedVTR):
     def __init__(self, input_size=5, training=False):
         super().__init__()
         # consts
-        self.LR = 0.00001
+        self.LR = 0.00005
         self.training = training
         self.input_size = input_size
 
@@ -246,19 +252,23 @@ class NeuralNet(InformedVTR):
 
         # NN training
         self.device = t.device('cuda' if t.cuda.is_available() else 'cpu')
-        self.model = t.nn.Sequential(t.nn.Linear(9216, 1000),
-                                     t.nn.ReLU(),
-                                     t.nn.Linear(1000, 1000),
-                                     t.nn.ReLU(),
-                                     t.nn.Linear(1000, 2)).to(self.device).float()
+        self.model = FeedForward(2).to(self.device)
+
         self.optimizer = t.optim.Adam(self.model.parameters(), lr=self.LR)
-        self.loss = torch.nn.MSELoss()
+        self.loss = t.nn.L1Loss()
+
+        self.last_x = None
+        self.last_y = None
+        self.last_phi = None
+        self.target_action = None
+        self.est_dist = None
 
     def reset(self):
         super().reset()
         if self.training:
             self.train_model()
 
+        self.est_dist = None
         self.action_buffer = []
         self.target_buffer = []
 
@@ -277,7 +287,7 @@ class NeuralNet(InformedVTR):
         self.optimizer.step()
         self.optimizer.zero_grad()
 
-    def parse_observation(self, obs):
+    def parse_hists(self, obs):
         cat_tesnors = []
         for n_obs in obs:
             flat_tensor = t.tensor(n_obs, device=self.device).flatten()
@@ -286,37 +296,67 @@ class NeuralNet(InformedVTR):
         new_obs = t.cat(cat_tesnors, dim=0).float()
         return new_obs
 
-    def produce_action(self):
-        data = None
-        while data is None:
-            # TODO: fix inconsistent size of input
-            data = self.observation_buffer.get_live_data()
-        parsed_data = self.parse_observation(data)
-        action = self.model.forward(parsed_data)
-        action[0] = t.sigmoid(action[0]) * 1 + 1.0
-        action[1] = t.tanh(action[1]) * 2.0
-        return action
+    def get_odom_data(self):
+        # last live odom diff
+        if self.last_x is not None:
+            dist = np.sqrt((self.curr_x - self.last_x)**2 + (self.curr_y - self.last_y)**2)
+            phi_diff = self.smallest_angle_diff(self.curr_phi, self.last_phi)
+            live_odom_diff = t.tensor([dist, phi_diff], device=self.device).float()
+        else:
+            live_odom_diff = t.tensor([0.0, 0.0], device=self.device).float()
+        self.last_x = self.curr_x
+        self.last_y = self.curr_y
+        self.last_phi = self.curr_phi
+
+        # last live action
+        if len(self.action_buffer) > 0:
+            last_live_action = self.action_buffer[-1][:2].detach()
+        else:
+            last_live_action = t.tensor([0.0, 0.0], device=self.device).float()
+
+        # curr map action
+        # TODO: this is not valid!!! must use est dist
+        curr_map_action = self.target_action[:2]
+
+        # curr map odom diff
+        # TODO: not trivial - must be between images
+
+        out = t.cat([live_odom_diff, last_live_action, curr_map_action])
+        return out
 
     def odom_callback(self, msg):
         # get curr position
         if self.repeating:
+            if self.est_dist is None:
+                self.est_dist = self.map_start_dist
             target_command = super().get_control_command(msg)
             if target_command is None:
                 return
-            target_tensor = t.tensor([target_command.linear.x, target_command.angular.z], device=self.device).float()
+            dist_err = self.curr_dist - self.est_dist
+            self.target_action = t.tensor([target_command.linear.x, target_command.angular.z, dist_err],
+                                          device=self.device).float()
 
-            self.processing.pubSensorsInput(self.curr_dist)
+            # TODO: When this is called just before parsing the hists, then the data are probably outdated !!!
+            self.processing.pubSensorsInput(self.est_dist)
 
-            action = self.produce_action()
+            data = None
+            while data is None:
+                # TODO: Wrong input at the end !!!
+                data = self.observation_buffer.get_live_data()
+            img_data = self.parse_hists(data)
+            odom_data = self.get_odom_data()
+
+            action = self.model.forward(img_data, odom_data)
 
             control_command = Twist()
             control_command.linear.x = action[0].cpu()
             control_command.angular.z = action[1].cpu()
+            self.est_dist += action[2].cpu().detach().numpy()
 
             self.control_pub.publish(control_command)
 
             self.action_buffer.append(action)
-            self.target_buffer.append(target_tensor)
-            # rospy.logwarn("action: " + str(action.cpu().detach().numpy()) + ", target: " + str(target_tensor.cpu().detach().numpy()))
+            self.target_buffer.append(self.target_action)
+            rospy.logwarn("action: " + str(action.cpu().detach().numpy()) + ", target: " + str(self.target_action.cpu().detach().numpy()))
         else:
             self.control_pub.publish(Twist())

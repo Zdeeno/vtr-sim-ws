@@ -85,15 +85,15 @@ class Map:
 
 class Simulator:
     def __init__(self, map_dir):
-        self.failure_dist = 2.0
+        self.failure_dist = 5.0
         self.failure_angle = np.pi / 2.0
         self.target_dist = 0.0
         self.not_moving_trsh = rospy.Duration(5)
         self.last_moved_time = None
         self.moving_dist = 1.0
 
-        self.teleport_displacement = 0.5
-        self.teleport_rotation = np.pi / 16.0
+        self.teleport_displacement = 2.0
+        self.teleport_rotation = np.pi / 8.0
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
