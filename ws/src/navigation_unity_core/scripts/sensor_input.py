@@ -38,7 +38,7 @@ class Processing:
             mappaths = [mappaths]
         for map_idx, mappath in enumerate(mappaths):
             tmp = []
-            mappath = os.path.expanduser('~') + "/.ros/simulator_maps/" + mappath
+            mappath = os.path.expanduser('~') + "/.ros/" + mappath
             for file in list(os.listdir(mappath)):
                 if file.endswith(".npy"):
                     tmp.append(file[:-4])
@@ -91,7 +91,6 @@ class Processing:
             rospy.logwarn("Whole map " + str(mappath) + " sucessfully loaded")
 
     def pubSensorsInput(self, distance):
-        # rospy.logwarn("Obtained image!")
         if len(self.map_images) > 0:
             # rospy.logwarn(self.map_distances)
             # Load data from each map the map

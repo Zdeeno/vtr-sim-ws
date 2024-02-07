@@ -8,15 +8,15 @@ class FeedForward(t.nn.Module):
         map_obs_size = lookaround * 2 + 1
         map_trans_size = lookaround * 2
         total_size = map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
-        hist_size = 1024
+        hist_size = 512
         input_size = total_size * hist_size
 
         # histograms from visual data
-        self.visual = t.nn.Sequential(t.nn.Linear(input_size, 1024),
+        self.visual = t.nn.Sequential(t.nn.Linear(input_size, 512),
                                       t.nn.ReLU(),
-                                      t.nn.Linear(1024, 1024),
+                                      t.nn.Linear(512, 512),
                                       t.nn.ReLU(),
-                                      t.nn.Linear(1024, 64))
+                                      t.nn.Linear(512, 64))
 
         # odometry and action commands: live_odom_diff + last_action + map_action
         # TODO: add map_odom_diff (all map images)
@@ -41,6 +41,7 @@ class FeedForward(t.nn.Module):
         # normalize outputs:
         action[0] = t.sigmoid(action[0]) + 1.0
         action[1] = t.tanh(action[1]) * 2.0
+        action[2] = t.tanh(action[2]) * 5.0
         return action
 
 

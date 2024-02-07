@@ -107,7 +107,7 @@ class PFVTR(BaseVTR):
 class InformedVTR(BaseVTR):
     def __init__(self):
         rospy.logwarn("Trying to instantiate VTR class")
-        self.map_dir = "/home/zdeeno/.ros/simulator_maps/"
+        self.map_dir = "/home/zdeeno/.ros/"
         self.finished = False
 
         self.curr_dist = None
@@ -228,7 +228,10 @@ class InformedVTR(BaseVTR):
         # get curr position
         if self.repeating:
             control_command = self.get_control_command(msg)
-            self.control_pub.publish(control_command)
+            if control_command is None:
+                self.control_pub.publish(Twist())
+            else:
+                self.control_pub.publish(control_command)
         else:
             self.control_pub.publish(Twist())
 
@@ -241,6 +244,7 @@ class NeuralNet(InformedVTR):
         self.LR = 0.00005
         self.training = training
         self.input_size = input_size
+        self.max_dist_err = 2
 
         # vars
         self.action_buffer = []
@@ -255,7 +259,7 @@ class NeuralNet(InformedVTR):
         self.model = FeedForward(2).to(self.device)
 
         self.optimizer = t.optim.Adam(self.model.parameters(), lr=self.LR)
-        self.loss = t.nn.L1Loss()
+        self.loss = t.nn.MSELoss()
 
         self.last_x = None
         self.last_y = None
@@ -268,6 +272,10 @@ class NeuralNet(InformedVTR):
         if self.training:
             self.train_model()
 
+        self.last_x = None
+        self.last_y = None
+        self.last_phi = None
+        self.target_action = None
         self.est_dist = None
         self.action_buffer = []
         self.target_buffer = []
@@ -280,17 +288,18 @@ class NeuralNet(InformedVTR):
         # TODO: I expect this to fail miserably - dimensions
         rospy.logwarn("Training the model using " + str(len(self.action_buffer)) + " observations.")
 
-        actions = t.stack(self.action_buffer)
-        targets = t.stack(self.target_buffer[:actions.shape[0]])
-        l = self.loss(actions, targets)
-        l.backward()
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        if len(self.action_buffer) > 0:
+            actions = t.stack(self.action_buffer)
+            targets = t.stack(self.target_buffer[:actions.shape[0]])
+            l = self.loss(actions, targets)
+            l.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
 
     def parse_hists(self, obs):
         cat_tesnors = []
         for n_obs in obs:
-            flat_tensor = t.tensor(n_obs, device=self.device).flatten()
+            flat_tensor = t.tensor(n_obs[:, 256:-256], device=self.device).flatten()
             norm_flat_tesnsor = (flat_tensor - t.std(flat_tensor)) / t.var(flat_tensor)
             cat_tesnors.append(norm_flat_tesnsor)
         new_obs = t.cat(cat_tesnors, dim=0).float()
@@ -337,11 +346,11 @@ class NeuralNet(InformedVTR):
                                           device=self.device).float()
 
             # TODO: When this is called just before parsing the hists, then the data are probably outdated !!!
-            self.processing.pubSensorsInput(self.est_dist)
 
             data = None
             while data is None:
                 # TODO: Wrong input at the end !!!
+                self.processing.pubSensorsInput(self.est_dist)
                 data = self.observation_buffer.get_live_data()
             img_data = self.parse_hists(data)
             odom_data = self.get_odom_data()
@@ -355,8 +364,9 @@ class NeuralNet(InformedVTR):
 
             self.control_pub.publish(control_command)
 
-            self.action_buffer.append(action)
-            self.target_buffer.append(self.target_action)
-            rospy.logwarn("action: " + str(action.cpu().detach().numpy()) + ", target: " + str(self.target_action.cpu().detach().numpy()))
+            if abs(dist_err) < self.max_dist_err:
+                self.action_buffer.append(action)
+                self.target_buffer.append(self.target_action)
+                rospy.logwarn("action: " + str(action.cpu().detach().numpy()) + ", target: " + str(self.target_action.cpu().detach().numpy()))
         else:
             self.control_pub.publish(Twist())

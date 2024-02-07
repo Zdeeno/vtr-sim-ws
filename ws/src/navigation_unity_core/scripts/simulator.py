@@ -50,7 +50,7 @@ class Map:
         rospy.logwarn("Map " + self.name + " fetched with " + str(len(dists)) + " points " + str(
             len(actions)) + " actions " + str(len(odoms)) + " odometries")
         return dists, odoms, actions
-        
+
     def get_rviz_marker(self):
         m_arr = MarkerArray()
         for i in range(len(self.odoms)):
@@ -101,7 +101,7 @@ class Simulator:
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
-        
+
         self.curr_x = None
         self.curr_y = None
         self.last_x = None
@@ -120,7 +120,7 @@ class Simulator:
         self.spawn_error_weight_rot = self.teleport_rotation
         self.spawn_distance_weight = dist_weight
         self.map_phis = None
-        
+
         # ros initialization
         rospy.init_node('simulator')
         rospy.wait_for_service('reset_world')
@@ -134,10 +134,6 @@ class Simulator:
         all_map_dirs = [f.path for f in os.scandir(map_dir) if f.is_dir() and "vtr" in f.path]
         self.maps = [Map(p) for p in all_map_dirs]
         rospack = rospkg.RosPack()
-        self.world_path = rospack.get_path('navigation_unity_core') + "/unity_world_config/"
-        self.avail_worlds = ["default_world.yaml", "rainy_day.yaml"]
-        self.last_world = None
-        
         # sub gt position
         ## init generator
         self.world_path = rospack.get_path('navigation_unity_core') + "/unity_world_config/"
@@ -146,8 +142,6 @@ class Simulator:
 
     def reset_sim(self, day_time=None, scene=None, teleport=None):
         # clear variables
-        rospy.logwarn("Starting new round!")
-        self.randomly_change_world()
         self.trav_x = []
         self.trav_y = []
         self.map_traj = None
@@ -156,7 +150,6 @@ class Simulator:
         plt.ion()
         self.fig, self.ax = plt.subplots()
         self.ax.grid()
-        rospy.logwarn("Starting new round!")
         spawn_point = None
         # change world
         if day_time is not None and scene is not None:
@@ -164,13 +157,15 @@ class Simulator:
                 day_time, scene, teleport, fog_density=0.0, lights=False)
             rospy.logwarn("Time based change to " + str(day_hours) + ":" + str(day_minutes) + " with speed " + str(
                 day_progress_speed) + " and fog " + str(fog_density) + " and spawn point " + str(spawn_point))
-            new_map_idx = scene
+            # TODO: BEWARE THIS must be fixed
+            new_map_idx = np.random.randint(len(self.maps))
 
         else:
             scene = self.world_generator.randomly_change_world()
             new_map_idx = np.random.randint(len(self.maps))
 
         self.curr_map_idx = new_map_idx
+
         # plot map and teleport the robot
         self.plt_trajectory(self.curr_map_idx)
         self.target_dist = self.maps[self.curr_map_idx].dists[-1]
@@ -201,7 +196,7 @@ class Simulator:
         if save_fig:
             rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
             self.fig.savefig(HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
-    
+
     def rviz_trajectory(self, map_idx):
         marker_pub.publish(self.maps[map_idx].get_rviz_marker())
         rospy.logwarn("Markers published!")
@@ -241,7 +236,7 @@ class Simulator:
              odom_pos.pose.pose.orientation.w])
         target_quat = quaternion_from_euler(a, b, c + diff_phi * self.spawn_error_weight_rot)
         pose_to.orientation = Quaternion(*target_quat)
-        pose_to.position.z = odom_pos.pose.pose.position.z + 0.25  # spawn bit higher to avoid textures
+        pose_to.position.z = odom_pos.pose.pose.position.z + 0.2  # spawn bit higher to avoid textures
         self.teleport_pub.publish(pose_to)
         rospy.logwarn("Teleporting robot to " + str(pose_to.position.x) + " " + str(pose_to.position.y) + " " + str(
             pose_to.position.z))
@@ -254,7 +249,7 @@ class Simulator:
         rospy.loginfo("Starting traversal of map: " + map_name)
         vtr.repeat_map(start_pos, end_pos, map_name)
         return
-    
+
     def traversal_summary(self):
         # TODO: use class variables which have precalculated trajectory
         odom_pos = copy.copy(self.maps[self.curr_map_idx].odoms[-1])
@@ -325,7 +320,7 @@ class Simulator:
 
 
 class Environment:
-    def __init__(self, map_dir):
+    def __init__(self, simulator, vtr):
         # subscribe observations
         self.map_idx = None
         self.failure = None
@@ -339,6 +334,8 @@ class Environment:
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):
         self.traversal_idx += 1
+        rospy.logwarn("------------ Starting round " + str(self.traversal_idx) + "! --------------")
+
 
         self.failure = False
         self.map_idx, self.map_name, self.dist = self.sim.reset_sim(day_time, scene, random_teleport)
@@ -356,8 +353,8 @@ class Environment:
             rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
         else:
             self.sim.traversal_summary()
-        self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
         self.vtr.reset()
+        self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
         self.sim.control_pub.publish(Twist())  # stop robot movement traversing
         time.sleep(2)
 
@@ -367,24 +364,25 @@ class Environment:
         # self.round_setup(12, 1)
         # time.sleep(30)
 
+
 if __name__ == '__main__':
 
     # start simulation
-    simulator = Simulator(MAP_DIR, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0,
+    simulator = Simulator(MAP_DIR, pose_err_weight=1.0, rot_err_weight=np.pi / 16.0,
                           dist_weight=0.5)
     # informed policy for benchmarking
     # vtr = InformedVTR()
 
     # PFVTR policy
-    vtr = PFVTR(image_pub=1)
+    # vtr = PFVTR(image_pub=1)
 
     # Neural network controller
-    # vtr = NeuralNet(training=True)
+    vtr = NeuralNet(training=True)
 
     sim = Environment(simulator, vtr)
     day_time = 0.0  # daylight between 0.21 to 0.95
     # sim.test_setups()
     while True:
         pass
-        sim.round_setup(day_time=np.random.uniform(0.21, 0.95), scene=np.random.randint(2), random_teleport=True)
+        sim.round_setup(day_time=np.random.uniform(0.21, 0.95), scene=0, random_teleport=True)
         sim.simulation_forward()
