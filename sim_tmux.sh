@@ -25,11 +25,11 @@ tmux send-keys -t simulator:control "sleep 4" Enter
 tmux send-keys -t simulator:control "roslaunch navigation_unity_core support.launch --wait" Enter
 
 tmux send-keys -t simulator:pfvtr "source ws/devel/setup.$x" Enter
-tmux send-keys -t simulator:pfvtr "roslaunch pfvtr sim.launch --wait" Enter
+tmux send-keys -t simulator:pfvtr "roslaunch pfvtr sim.launch --wait"
 
 tmux send-keys -t simulator:view "source ws/devel/setup.$x" Enter
 tmux send-keys -t simulator:view "sleep 6" Enter
-tmux send-keys -t simulator:view "rviz -d sim_build/rviz.rviz" Enter
+tmux send-keys -t simulator:view "rviz -d sim_build/rviz.rviz"
 
 tmux send-keys -t simulator:simulation "source ws/devel/setup.$x" Enter
 tmux send-keys -t simulator:simulation "python ws/src/navigation_unity_core/scripts/simulator.py"

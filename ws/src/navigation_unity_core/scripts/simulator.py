@@ -11,7 +11,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from vtr import PFVTR, InformedVTR, NeuralNet
+from vtr import PFVTR, InformedVTR, NeuralNet2, ActorCritic
 from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
 from world_generator import WorldGenerator
 import yaml
@@ -93,11 +93,11 @@ class Map:
 class Simulator:
     def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5):
         self.failure_dist = 5.0
-        self.failure_angle = np.pi / 2.0
+        self.failure_angle = np.pi / 4.0
         self.target_dist = 0.0
         self.not_moving_trsh = rospy.Duration(5)
         self.last_moved_time = None
-        self.moving_dist = 1.0
+        self.moving_dist = 0.25
 
         self.plot_wait = 100
         self.plot_counter = self.plot_wait
@@ -111,6 +111,7 @@ class Simulator:
         self.init_displacement = 0.0
         self.init_rot_error = 0.0
         self.init_pos = None
+        self.flipped_robot = False
 
         self.map_traj = None
         # might be wrong:::::
@@ -176,7 +177,7 @@ class Simulator:
         self.last_moved_time = None
         self.last_x = None
         self.last_y = None
-        rospy.sleep(1)  # avoid plotting errors
+        rospy.sleep(2)  # avoid plotting errors
         return new_map_idx, self.maps[new_map_idx].name, dist
 
     def plt_robot(self, save_fig=False, idx=0):
@@ -217,6 +218,8 @@ class Simulator:
             [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z,
              msg.pose.pose.orientation.w])
         self.curr_phi = c
+        if abs(b) > 0.5 * np.pi:
+            self.flipped_robot = True
 
     def teleport(self, map):
         pct_dist = self.spawn_distance_weight * np.random.rand(1)[0]
@@ -302,6 +305,10 @@ class Simulator:
             rospy.logwarn("!!!TRAVERSAL FAILED - TOO FAR FROM MAP!!!")
             return True
         # checking collision - no movement
+        if self.flipped_robot:
+            rospy.logwarn("!!!TRAVERSAL FAILED - ROBOT IS FLIPPED!!!")
+            self.flipped_robot = False
+            return True
         if self.last_x is not None and self.last_y is not None:
             dist = np.sqrt((self.last_x - self.curr_x) ** 2 + (self.last_y - self.curr_y) ** 2)
             if dist > self.moving_dist:
@@ -356,7 +363,7 @@ class Environment:
         self.vtr.reset()
         self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
         self.sim.control_pub.publish(Twist())  # stop robot movement traversing
-        time.sleep(2)
+        time.sleep(3)
 
     def test_setups(self):
         self.round_setup(0.5, 0)
@@ -377,12 +384,12 @@ if __name__ == '__main__':
     # vtr = PFVTR(image_pub=1)
 
     # Neural network controller
-    vtr = NeuralNet(training=True)
+    vtr = NeuralNet2(training=True)
 
     sim = Environment(simulator, vtr)
     day_time = 0.0  # daylight between 0.21 to 0.95
     # sim.test_setups()
     while True:
         pass
-        sim.round_setup(day_time=np.random.uniform(0.21, 0.95), scene=0, random_teleport=True)
+        sim.round_setup(day_time=np.random.uniform(0.3, 0.7), scene=0, random_teleport=True)
         sim.simulation_forward()

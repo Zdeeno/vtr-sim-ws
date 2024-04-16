@@ -18,9 +18,9 @@ robot_type: jackal
 session_seed: 42
 spawn_area: center
 spawn_point_number: 0
-time_hour: 17
+time_hour: 12
 time_minute: 0
-time_minutes: 33
+time_minutes: 31
 time_progress_speed: 0.0
 wind_intensity: 4
 world_name: forest1
