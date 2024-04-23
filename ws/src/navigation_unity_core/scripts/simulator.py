@@ -11,7 +11,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from vtr import PFVTR, InformedVTR, NeuralNet2, ActorCritic
+from vtr import PFVTR, InformedVTR, NeuralNet2
 from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
 from world_generator import WorldGenerator
 import yaml
@@ -99,8 +99,8 @@ class Simulator:
         self.last_moved_time = None
         self.moving_dist = 0.25
 
-        self.plot_wait = 100
-        self.plot_counter = self.plot_wait
+        self.plot_wait = -1
+        self.plot_counter = 0
 
         self.curr_x = None
         self.curr_y = None

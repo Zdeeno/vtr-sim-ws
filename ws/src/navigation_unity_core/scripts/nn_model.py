@@ -2,6 +2,7 @@ import torch as t
 import math
 import numpy as np
 import rospy
+from tensordict.nn.distributions import NormalParamExtractor
 
 class FeedForward(t.nn.Module):
 
@@ -74,19 +75,19 @@ class FeedForward2(t.nn.Module):
                                                   t.nn.ReLU(),
                                                   t.nn.Linear(128, 64))
 
-        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size * 2, 256),
                                             t.nn.ReLU(),
-                                            t.nn.Linear(256, 32))
+                                            t.nn.Linear(256, 64))
 
-        self.out_turn = t.nn.Sequential(t.nn.Linear(10 * 64 + 32, 256),
+        self.out_turn = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
                                         t.nn.ReLU(),
                                         t.nn.Linear(256, 1))
 
-        self.out_dist = t.nn.Sequential(t.nn.Linear(10 * 64 + 32, 256),
+        self.out_dist = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
                                         t.nn.ReLU(),
                                         t.nn.Linear(256, self.dist_hist_size))
 
-    def forward(self, x, curr_action, curr_dists):
+    def forward(self, x, curr_action):
         anchor1 = self.map_obs_size * self.hist_size
         anchor2 = (self.map_obs_size * self.hist_size)*2 - self.hist_size
         anchor3 = anchor2 + self.hist_size
@@ -95,14 +96,14 @@ class FeedForward2(t.nn.Module):
         live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
         trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
         curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
-        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size * 2))).flatten()
         bottleneck = t.cat([live_vs_map, trans, curr_trans, dists])
         out_turn = self.out_turn(bottleneck)
         out_dist = self.out_dist(bottleneck)
         # normalize outputs:
         out = t.cat([out_turn, out_dist])
         out[0] = t.tanh(out[0]) * 0.5 + curr_action
-        out[1:] = t.sigmoid(out[1:])  # * curr_dists
+        out[1:] = t.sigmoid(out[1:])
         return out
 
 
@@ -324,3 +325,122 @@ class SinActivation(t.nn.Module):
 
     def forward(self, input):
         return t.sin(input)
+
+
+class PPOActor(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 512
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                                t.nn.ReLU(),
+                                                t.nn.Linear(128, 64))
+
+        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                             t.nn.ReLU(),
+                                             t.nn.Linear(128, 64))
+
+        self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                                  t.nn.ReLU(),
+                                                  t.nn.Linear(128, 64))
+
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
+                                            t.nn.ReLU(),
+                                            t.nn.Linear(256, 64))
+
+        self.out = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
+                                   t.nn.ReLU(),
+                                   t.nn.Linear(256, 4))
+
+        self.norm = NormalParamExtractor()
+
+    def forward(self, x):
+        x = x[0, :]
+        anchor1 = self.map_obs_size * self.hist_size
+        anchor2 = (self.map_obs_size * self.hist_size)*2 - self.hist_size
+        anchor3 = anchor2 + self.hist_size
+        # rospy.logwarn(str(x.shape))
+        # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
+        # print(" -------------- INPUT SHAPE: \n" + str(x.shape))
+        live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
+        curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map, trans, curr_trans, dists])
+        out = self.out(bottleneck).unsqueeze(0)
+        out = self.norm(out)
+        return out
+
+
+class PPOValue(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 512
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                                t.nn.ReLU(),
+                                                t.nn.Linear(128, 64))
+
+        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                             t.nn.ReLU(),
+                                             t.nn.Linear(128, 64))
+
+        self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                                  t.nn.ReLU(),
+                                                  t.nn.Linear(128, 64))
+
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
+                                            t.nn.ReLU(),
+                                            t.nn.Linear(256, 64))
+
+        self.out = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
+                                   t.nn.ReLU(),
+                                   t.nn.Linear(256, 1))
+
+    def pass_network(self, x):
+        anchor1 = self.map_obs_size * self.hist_size
+        anchor2 = (self.map_obs_size * self.hist_size) * 2 - self.hist_size
+        anchor3 = anchor2 + self.hist_size
+        # rospy.logwarn(str(x.shape))
+        # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
+        live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
+        curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map, trans, curr_trans, dists])
+        out = self.out(bottleneck).unsqueeze(0)
+        return out
+
+    def forward(self, x):
+        # print("VALUE PPO IN SIZE: " + str(x.shape))
+        if len(x.shape) > 2:
+            batched_x = x[0]
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                x = batched_x[i]
+                out = self.pass_network(x)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out
+        else:
+            x = x[0, :]
+            return self.pass_network(x)
