@@ -167,7 +167,6 @@ class VTREnv(BaseInformed):
         super().__init__()
         # consts
         self.use_history = True
-        self.LR = 1e-5
         self.training = training
         self.input_size = input_size
         self.max_dist_err = 3.0
@@ -182,13 +181,6 @@ class VTREnv(BaseInformed):
 
         # NN training
         self.device = t.device('cuda' if t.cuda.is_available() else 'cpu')
-        self.model = FeedForward2(2, self.dist_span).to(self.device)
-
-        self.model.load_state_dict(t.load("/home/zdeeno/.ros/models/nn.pt"))
-
-        self.optimizer = t.optim.Adam(self.model.parameters(), lr=self.LR)
-        self.turn_loss = t.nn.MSELoss()
-        self.dist_loss = t.nn.BCELoss()
 
         # vars
         self.curr_reward = 0.0
@@ -203,16 +195,15 @@ class VTREnv(BaseInformed):
         pass
 
     def step(self, action):
-        # GET LAST REWARD
-        reward = self.curr_reward
-        self.curr_reward = 0.0
-
         # CONTROL THE ROBOT
         if self.repeating:
             self.control_robot(action)
 
         # OBTAIN OBSERVATION
         obs = self.get_observation()
+
+        reward = self.curr_reward
+        self.curr_reward = 0.0
 
         # CHECK FINISH
         if self.est_dist + 0.3 > self.final_dist:
@@ -325,7 +316,7 @@ class VTREnv(BaseInformed):
             self.process_odom()
             self.processing.pubSensorsInput(self.est_dist)
             dist_err = abs(self.curr_dist - self.est_dist)
-            self.curr_reward = 1.0 -abs(self.displacement) - dist_err
+            self.curr_reward = 5.0 - abs(self.displacement) - dist_err
             self.last_displacement = self.displacement
 
 
@@ -354,7 +345,7 @@ class GymEnvironment(EnvBase):
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.5, -1.0]], [[0.5, 1.0]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
-        self.reward_spec = BoundedTensorSpec(-10.0, 1.0, t.Size([1]), self.device)
+        self.reward_spec = BoundedTensorSpec(-10.0, 3.0, t.Size([1]), self.device)
         self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1]), dtype=t.bool)
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):
@@ -376,9 +367,11 @@ class GymEnvironment(EnvBase):
             self.finished = True
             failure = True
         if self.finished:
+            self.vtr.control_pub.publish(Twist())
             self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
             if not failure:
                 self.sim.traversal_summary()
+        reward = max(reward, -0.0)
         # rospy.logwarn("observation: " + str(obs.shape) + ", has inf: " + str(t.any(t.isinf(obs))))
         return TensorDict({"observation": obs.unsqueeze(0),
                            "reward": t.tensor([reward], device=self.device).float(),

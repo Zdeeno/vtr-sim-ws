@@ -342,29 +342,28 @@ class PPOActor(t.nn.Module):
 
         # histograms from visual data (1, 2, 5)
         self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                t.nn.ReLU(),
+                                                t.nn.Tanh(),
                                                 t.nn.Linear(128, 64))
 
         self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                             t.nn.ReLU(),
+                                             t.nn.Tanh(),
                                              t.nn.Linear(128, 64))
 
         self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                  t.nn.ReLU(),
+                                                  t.nn.Tanh(),
                                                   t.nn.Linear(128, 64))
 
         self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
-                                            t.nn.ReLU(),
+                                            t.nn.Tanh(),
                                             t.nn.Linear(256, 64))
 
         self.out = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
-                                   t.nn.ReLU(),
+                                   t.nn.Tanh(),
                                    t.nn.Linear(256, 4))
 
         self.norm = NormalParamExtractor()
 
-    def forward(self, x):
-        x = x[0, :]
+    def pass_network(self, x):
         anchor1 = self.map_obs_size * self.hist_size
         anchor2 = (self.map_obs_size * self.hist_size)*2 - self.hist_size
         anchor3 = anchor2 + self.hist_size
@@ -377,8 +376,23 @@ class PPOActor(t.nn.Module):
         dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
         bottleneck = t.cat([live_vs_map, trans, curr_trans, dists])
         out = self.out(bottleneck).unsqueeze(0)
-        out = self.norm(out)
         return out
+
+    def forward(self, x):
+        # print("PASSING ACTOR: " + str(x.shape))
+        if x.shape[0] > 1:
+            batch_size = x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                x_one = x[i]
+                out = self.pass_network(x_one)
+                out_list.append(out)
+            out = t.cat(out_list, dim=0)
+        else:
+            x = x[0, :]
+            out = self.pass_network(x)
+        return self.norm(out)
+
 
 
 class PPOValue(t.nn.Module):
@@ -396,23 +410,23 @@ class PPOValue(t.nn.Module):
 
         # histograms from visual data (1, 2, 5)
         self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                t.nn.ReLU(),
+                                                t.nn.Tanh(),
                                                 t.nn.Linear(128, 64))
 
         self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                             t.nn.ReLU(),
+                                             t.nn.Tanh(),
                                              t.nn.Linear(128, 64))
 
         self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                  t.nn.ReLU(),
+                                                  t.nn.Tanh(),
                                                   t.nn.Linear(128, 64))
 
         self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
-                                            t.nn.ReLU(),
+                                            t.nn.Tanh(),
                                             t.nn.Linear(256, 64))
 
         self.out = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
-                                   t.nn.ReLU(),
+                                   t.nn.Tanh(),
                                    t.nn.Linear(256, 1))
 
     def pass_network(self, x):
@@ -430,7 +444,6 @@ class PPOValue(t.nn.Module):
         return out
 
     def forward(self, x):
-        # print("VALUE PPO IN SIZE: " + str(x.shape))
         if len(x.shape) > 2:
             batched_x = x[0]
             batch_size = batched_x.shape[0]
@@ -441,6 +454,17 @@ class PPOValue(t.nn.Module):
                 out_list.append(out)
             out = t.cat(out_list, dim=1)
             return out
-        else:
-            x = x[0, :]
-            return self.pass_network(x)
+
+        if x.shape[0] > 1:
+            batched_x = x
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                x = batched_x[i]
+                out = self.pass_network(x)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out[0]
+
+        x = x[0, :]
+        return self.pass_network(x)

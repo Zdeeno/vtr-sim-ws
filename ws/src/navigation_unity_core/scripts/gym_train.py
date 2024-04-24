@@ -29,10 +29,10 @@ import rospy
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-lr = 1e-4
+lr = 1e-5
 max_grad_norm = 1.0
 
-frames_per_batch = 50
+frames_per_batch = 100
 # For a complete training, bring the number of frames up to 1M
 total_frames = 100_000
 
@@ -42,7 +42,7 @@ num_epochs = 10  # optimisation steps per batch of data collected
 clip_epsilon = (
     0.2  # clip value for PPO loss: see the equation in the intro for more context.
 )
-gamma = 0.99
+gamma = 0.95
 lmbda = 0.95
 entropy_eps = 1e-4
 
