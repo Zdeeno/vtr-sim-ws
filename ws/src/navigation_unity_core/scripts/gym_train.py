@@ -27,8 +27,6 @@ from gym_env import GymEnvironment
 from nn_model import PPOActor, PPOValue
 import rospy
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 lr = 1e-5
 max_grad_norm = 1.0
 
@@ -49,6 +47,7 @@ entropy_eps = 1e-4
 
 env = GymEnvironment()
 
+device = env.device
 
 env = TransformedEnv(
     env,
