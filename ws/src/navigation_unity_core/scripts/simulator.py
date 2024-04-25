@@ -91,7 +91,7 @@ class Map:
 
 
 class Simulator:
-    def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5):
+    def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5, headless=False):
         self.failure_dist = 5.0
         self.failure_angle = np.pi / 4.0
         self.target_dist = 0.0
@@ -112,6 +112,8 @@ class Simulator:
         self.init_rot_error = 0.0
         self.init_pos = None
         self.flipped_robot = False
+
+        self.headless = headless
 
         self.map_traj = None
         # might be wrong:::::
@@ -148,7 +150,8 @@ class Simulator:
         self.map_traj = None
         self.init_pos = None
         plt.close()
-        plt.ion()
+        if not self.headless:
+            plt.ion()
         self.fig, self.ax = plt.subplots()
         self.ax.grid()
         spawn_point = None
@@ -207,7 +210,8 @@ class Simulator:
         self.ax.plot(map_traj_x, map_traj_y)
         self.map_traj = np.column_stack((map_traj_x, map_traj_y))
         self.map_phis = np.array(map_traj_phi)
-        plt.show()
+        if not self.headless:
+            plt.show()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 

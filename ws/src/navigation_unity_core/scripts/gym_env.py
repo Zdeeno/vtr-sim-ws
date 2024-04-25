@@ -334,7 +334,7 @@ class GymEnvironment(EnvBase):
         self.traversal_idx = 0
 
         self.sim = Simulator(MAP_DIR, pose_err_weight=1.0, rot_err_weight=np.pi / 16.0,
-                             dist_weight=0.5)
+                             dist_weight=0.5, headless=True)
         self.vtr = VTREnv(training=True)
         self.device = self.vtr.device
 
