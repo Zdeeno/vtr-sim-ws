@@ -22,12 +22,12 @@ import time
 from tensordict import TensorDict
 
 HOME = os.path.expanduser('~')
-MAP_DIR = HOME + "/.ros"
+MAP_DIR = HOME + "/.ros/"
 
 class BaseInformed(BaseVTR):
     def __init__(self):
         rospy.logwarn("Trying to instantiate VTR class")
-        self.map_dir = "/home/zdeeno/.ros/"
+        self.map_dir = MAP_DIR
         self.finished = False
 
         self.displacement = None
@@ -203,7 +203,6 @@ class VTREnv(BaseInformed):
         obs = self.get_observation()
 
         reward = self.curr_reward
-        self.curr_reward = 0.0
 
         # CHECK FINISH
         if self.est_dist + 0.3 > self.final_dist:
@@ -235,11 +234,13 @@ class VTREnv(BaseInformed):
         self.control_pub.publish(control_command)
 
     def get_observation(self):
+        if self.est_dist is None:
+            self.est_dist = self.map_start_dist
         data = None
         while data is None:
             data = self.observation_buffer.get_live_data()
             if data is None:
-                print("WAITING FOR NEW DATA!")
+                rospy.logwarn("WAITING FOR NEW DATA!")
                 rospy.sleep(0.05)
         img_data = self.parse_hists(data[1:])
         img_pos = self.process_distance(data[0])
@@ -371,7 +372,7 @@ class GymEnvironment(EnvBase):
             self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
             if not failure:
                 self.sim.traversal_summary()
-        reward = max(reward, -0.0)
+        reward = max(reward, 0.0)
         # rospy.logwarn("observation: " + str(obs.shape) + ", has inf: " + str(t.any(t.isinf(obs))))
         return TensorDict({"observation": obs.unsqueeze(0),
                            "reward": t.tensor([reward], device=self.device).float(),

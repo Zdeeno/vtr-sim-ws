@@ -27,10 +27,10 @@ from gym_env import GymEnvironment
 from nn_model import PPOActor, PPOValue
 import rospy
 
-lr = 1e-5
+lr = 3e-6
 max_grad_norm = 1.0
 
-frames_per_batch = 500
+frames_per_batch = 1000
 # For a complete training, bring the number of frames up to 1M
 total_frames = 100_000
 

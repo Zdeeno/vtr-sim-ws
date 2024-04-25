@@ -173,6 +173,7 @@ class Simulator:
         # plot map and teleport the robot
         self.plt_trajectory(self.curr_map_idx)
         self.target_dist = self.maps[self.curr_map_idx].dists[-1]
+        time.sleep(1)
         if teleport is None or not teleport:
             dist = 0.0
         else:
@@ -243,7 +244,7 @@ class Simulator:
              odom_pos.pose.pose.orientation.w])
         target_quat = quaternion_from_euler(a, b, c + diff_phi * self.spawn_error_weight_rot)
         pose_to.orientation = Quaternion(*target_quat)
-        pose_to.position.z = odom_pos.pose.pose.position.z + 0.2  # spawn bit higher to avoid textures
+        pose_to.position.z = odom_pos.pose.pose.position.z + 0.3  # spawn bit higher to avoid textures
         self.teleport_pub.publish(pose_to)
         rospy.logwarn("Teleporting robot to " + str(pose_to.position.x) + " " + str(pose_to.position.y) + " " + str(
             pose_to.position.z))
