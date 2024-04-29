@@ -27,7 +27,7 @@ from gym_env import GymEnvironment
 from nn_model import PPOActor, PPOValue
 import rospy
 
-lr = 3e-6
+lr = 3e-5
 max_grad_norm = 1.0
 
 frames_per_batch = 1000
@@ -90,6 +90,8 @@ policy_module = ProbabilisticActor(
     distribution_kwargs={
         "min": env.action_spec.space.low,
         "max": env.action_spec.space.high,
+        # "event_dims": 2,
+        "tanh_loc": True
     },
     return_log_prob=True,
     # we'll need the log-prob for the numerator of the importance weights

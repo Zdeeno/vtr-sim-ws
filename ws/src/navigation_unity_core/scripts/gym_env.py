@@ -264,14 +264,22 @@ class VTREnv(BaseInformed):
         self.processing.load_map(name)
         return super().fetch_map(name)
 
+    def resize_histogram(self, x):
+        # RESIZE BY FACTOR of 8
+        reshaped_x = x.view(1, -1, 8)
+        # Sum along the second dimension to aggregate every 8 bins into one
+        resized_x = reshaped_x.sum(dim=2)
+        return resized_x
+
     def parse_hists(self, obs):
         cat_tesnors = []
         # max_map_img = t.argmax(t.max(t.tensor(obs[0]), dim=1)[0])
         # rospy.logwarn("MAX MAP: " + str(max_map_img))
         for n_obs in obs:
             flat_tensor = t.tensor(n_obs[:, 256:-256], device=self.device).flatten()
+            flat_tensor = self.resize_histogram(flat_tensor)
             norm_flat_tesnsor = (flat_tensor - t.std(flat_tensor)) / t.var(flat_tensor)
-            cat_tesnors.append(norm_flat_tesnsor)
+            cat_tesnors.append(norm_flat_tesnsor.squeeze(0))
         new_obs = t.cat(cat_tesnors, dim=0).float()
         return new_obs
 
@@ -341,12 +349,12 @@ class GymEnvironment(EnvBase):
 
         # TORCHRL specs
         self.batch_size = t.Size([1])
-        self.observation_spec = CompositeSpec({"observation": UnboundedContinuousTensorSpec(shape=t.Size([1, 5201]),
+        self.observation_spec = CompositeSpec({"observation": UnboundedContinuousTensorSpec(shape=t.Size([1, 721]),
                                                                                             device=self.device)},
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.5, -1.0]], [[0.5, 1.0]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
-        self.reward_spec = BoundedTensorSpec(-10.0, 3.0, t.Size([1]), self.device)
+        self.reward_spec = BoundedTensorSpec(0.0, 5.0, t.Size([1]), self.device)
         self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1]), dtype=t.bool)
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):

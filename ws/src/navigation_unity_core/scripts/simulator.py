@@ -223,7 +223,7 @@ class Simulator:
             [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z,
              msg.pose.pose.orientation.w])
         self.curr_phi = c
-        if abs(b) > 0.5 * np.pi:
+        if abs(a) > 0.5 * np.pi:
             self.flipped_robot = True
 
     def teleport(self, map):

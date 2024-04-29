@@ -335,7 +335,7 @@ class PPOActor(t.nn.Module):
         self.map_obs_size = lookaround * 2 + 1
         map_trans_size = lookaround * 2
         total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
-        self.hist_size = 512
+        self.hist_size = 64
         input_size = total_size * self.hist_size
         self.dist_hist_size = dist_window * 10 + 1
         input_size += self.dist_hist_size * 2
@@ -403,7 +403,7 @@ class PPOValue(t.nn.Module):
         self.map_obs_size = lookaround * 2 + 1
         map_trans_size = lookaround * 2
         total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
-        self.hist_size = 512
+        self.hist_size = 64
         input_size = total_size * self.hist_size
         self.dist_hist_size = dist_window * 10 + 1
         input_size += self.dist_hist_size * 2
