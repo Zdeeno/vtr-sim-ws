@@ -26,7 +26,9 @@ from tqdm import tqdm
 from gym_env import GymEnvironment
 from nn_model import PPOActor, PPOValue
 import rospy
+import os
 
+PRETRAINED = True
 lr = 3e-5
 max_grad_norm = 1.0
 
@@ -40,9 +42,12 @@ num_epochs = 10  # optimisation steps per batch of data collected
 clip_epsilon = (
     0.2  # clip value for PPO loss: see the equation in the intro for more context.
 )
-gamma = 0.95
+gamma = 0.99
 lmbda = 0.95
 entropy_eps = 1e-4
+
+HOME = os.path.expanduser('~')
+SAVE_DIR = HOME + "/.ros/models/"
 
 
 env = GymEnvironment()
@@ -77,6 +82,8 @@ env = TransformedEnv(
 print("------------ ENVIRONMENT CHECK DONE - INITIALIZING NETWORKS -------------")
 
 actor_net = PPOActor(2).float().to(device)
+if PRETRAINED:
+    actor_net.load_state_dict(torch.load(SAVE_DIR + "actor_net.pt"))
 
 policy_module = TensorDictModule(
     actor_net, in_keys=["observation"], out_keys=["loc", "scale"]
@@ -98,6 +105,9 @@ policy_module = ProbabilisticActor(
 )
 
 value_net = PPOValue(2).float().to(device)
+if PRETRAINED:
+    value_net.load_state_dict(torch.load(SAVE_DIR + "value_net.pt"))
+
 
 value_module = ValueOperator(
     module=value_net,
@@ -212,3 +222,5 @@ for i, tensordict_data in enumerate(collector):
     # We're also using a learning rate scheduler. Like the gradient clipping,
     # this is a nice-to-have but nothing necessary for PPO to work.
     scheduler.step()
+    torch.save(actor_net.state_dict(), SAVE_DIR + "actor_net.pt")
+    torch.save(value_net.state_dict(), SAVE_DIR + "value_net.pt")

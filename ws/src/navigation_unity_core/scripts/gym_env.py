@@ -190,6 +190,7 @@ class VTREnv(BaseInformed):
         self.last_phi = None
         self.target_action = None
         self.est_dist = None
+        self.last_obs = None
 
     def render(self, mode='human'):
         pass
@@ -200,7 +201,7 @@ class VTREnv(BaseInformed):
             self.control_robot(action)
 
         # OBTAIN OBSERVATION
-        obs = self.get_observation()
+        obs, failure = self.get_observation()
 
         reward = self.curr_reward
 
@@ -212,8 +213,11 @@ class VTREnv(BaseInformed):
             self.control_pub.publish(Twist())
 
         # CHECK FAILURE
-        dist_err = self.est_dist - self.curr_dist
-        if abs(dist_err) > self.max_dist_err:
+        if self.est_dist is not None and self.curr_dist is not None:
+            dist_err = self.est_dist - self.curr_dist
+        else:
+            dist_err = self.max_dist_err
+        if abs(dist_err) >= self.max_dist_err or failure:
             rospy.logwarn("Estimate is too far from actual position")
             self.finished = True
             self.repeating = False
@@ -237,16 +241,22 @@ class VTREnv(BaseInformed):
         if self.est_dist is None:
             self.est_dist = self.map_start_dist
         data = None
+        counter = 0
         while data is None:
             data = self.observation_buffer.get_live_data()
             if data is None:
                 rospy.logwarn("WAITING FOR NEW DATA!")
                 rospy.sleep(0.05)
+            counter += 1
+            if counter >= 10:
+                rospy.logwarn("UNABLE TO OBTAIN NEW DATA - FAILURE!")
+                return self.last_obs, True
         img_data = self.parse_hists(data[1:])
         img_pos = self.process_distance(data[0])
 
         obs = t.cat([img_data, img_pos]).float()
-        return obs
+        self.last_obs = obs
+        return obs, False
 
     def reset(self):
         super().reset()
@@ -259,6 +269,7 @@ class VTREnv(BaseInformed):
         self.last_pos_hist = None
         self.curr_reward = 0.0
         self.finished = False
+        self.last_obs = None
 
     def fetch_map(self, name):
         self.processing.load_map(name)
@@ -393,7 +404,7 @@ class GymEnvironment(EnvBase):
         self.sim.vtr_traversal(self.vtr, self.map_idx, self.dist)
         self.vtr.processing.pubSensorsInput(self.dist)
         rospy.sleep(0.25)
-        obs = self.vtr.get_observation()
+        obs, failure = self.vtr.get_observation()
         self.sim.plt_robot()
         # rospy.logwarn("observation: " + str(obs.shape) + ", has inf: " + str(t.any(t.isinf(obs))))
         return TensorDict({"observation": obs.unsqueeze(0)}, batch_size=[1])
