@@ -218,7 +218,7 @@ class VTREnv(BaseInformed):
         else:
             dist_err = self.max_dist_err
         if abs(dist_err) >= self.max_dist_err or failure:
-            rospy.logwarn("Estimate is too far from actual position")
+            rospy.logwarn("!!!TRAVERSAL FAILED - INVALID DISTANCE ESTIMATE!!!")
             self.finished = True
             self.repeating = False
             self.control_pub.publish(Twist())
@@ -248,7 +248,7 @@ class VTREnv(BaseInformed):
                 rospy.logwarn("WAITING FOR NEW DATA!")
                 rospy.sleep(0.05)
             counter += 1
-            if counter >= 10:
+            if counter >= 10 and self.last_obs is not None:
                 rospy.logwarn("UNABLE TO OBTAIN NEW DATA - FAILURE!")
                 return self.last_obs, True
         img_data = self.parse_hists(data[1:])
@@ -289,7 +289,7 @@ class VTREnv(BaseInformed):
         for n_obs in obs:
             flat_tensor = t.tensor(n_obs[:, 256:-256], device=self.device).flatten()
             flat_tensor = self.resize_histogram(flat_tensor)
-            norm_flat_tesnsor = (flat_tensor - t.std(flat_tensor)) / t.var(flat_tensor)
+            norm_flat_tesnsor = (flat_tensor - t.mean(flat_tensor)) / t.std(flat_tensor)
             cat_tesnors.append(norm_flat_tesnsor.squeeze(0))
         new_obs = t.cat(cat_tesnors, dim=0).float()
         return new_obs
@@ -363,7 +363,7 @@ class GymEnvironment(EnvBase):
         self.observation_spec = CompositeSpec({"observation": UnboundedContinuousTensorSpec(shape=t.Size([1, 721]),
                                                                                             device=self.device)},
                                               shape=t.Size([1]))
-        self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.5, -1.0]], [[0.5, 1.0]], t.Size([1, 2]), self.device)},
+        self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.25, -0.5]], [[0.25, 0.5]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
         self.reward_spec = BoundedTensorSpec(0.0, 5.0, t.Size([1]), self.device)
         self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1]), dtype=t.bool)

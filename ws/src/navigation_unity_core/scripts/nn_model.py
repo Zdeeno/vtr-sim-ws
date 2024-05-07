@@ -342,23 +342,23 @@ class PPOActor(t.nn.Module):
 
         # histograms from visual data (1, 2, 5)
         self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                t.nn.Tanh(),
+                                                t.nn.ReLU(),
                                                 t.nn.Linear(128, 64))
 
         self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                             t.nn.Tanh(),
+                                             t.nn.ReLU(),
                                              t.nn.Linear(128, 64))
 
         self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                  t.nn.Tanh(),
+                                                  t.nn.ReLU(),
                                                   t.nn.Linear(128, 64))
 
         self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
-                                            t.nn.Tanh(),
+                                            t.nn.ReLU(),
                                             t.nn.Linear(256, 64))
 
-        self.out = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
-                                   t.nn.Tanh(),
+        self.out = t.nn.Sequential(t.nn.Linear(5 * 64, 256),
+                                   t.nn.ReLU(),
                                    t.nn.Linear(256, 4))
 
         self.norm = NormalParamExtractor()
@@ -371,10 +371,10 @@ class PPOActor(t.nn.Module):
         # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
         # print(" -------------- INPUT SHAPE: \n" + str(x.shape))
         live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
-        trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
-        curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
-        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
-        bottleneck = t.cat([live_vs_map, trans, curr_trans, dists])
+        # trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
+        # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
+        # dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map])  # , trans, curr_trans, dists])
         out = self.out(bottleneck).unsqueeze(0)
         return out
 
@@ -391,8 +391,9 @@ class PPOActor(t.nn.Module):
         else:
             x = x[0, :]
             out = self.pass_network(x)
-        return self.norm(out)
-
+        normed_out = self.norm(out)
+        print(normed_out)
+        return normed_out
 
 
 class PPOValue(t.nn.Module):
@@ -410,23 +411,23 @@ class PPOValue(t.nn.Module):
 
         # histograms from visual data (1, 2, 5)
         self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                t.nn.Tanh(),
+                                                t.nn.ReLU(),
                                                 t.nn.Linear(128, 64))
 
         self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                             t.nn.Tanh(),
+                                             t.nn.ReLU(),
                                              t.nn.Linear(128, 64))
 
         self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
-                                                  t.nn.Tanh(),
+                                                  t.nn.ReLU(),
                                                   t.nn.Linear(128, 64))
 
         self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
-                                            t.nn.Tanh(),
+                                            t.nn.ReLU(),
                                             t.nn.Linear(256, 64))
 
-        self.out = t.nn.Sequential(t.nn.Linear(10 * 64 + 64, 256),
-                                   t.nn.Tanh(),
+        self.out = t.nn.Sequential(t.nn.Linear(5 * 64, 256),
+                                   t.nn.ReLU(),
                                    t.nn.Linear(256, 1))
 
     def pass_network(self, x):
@@ -436,10 +437,10 @@ class PPOValue(t.nn.Module):
         # rospy.logwarn(str(x.shape))
         # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
         live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
-        trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
-        curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
-        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
-        bottleneck = t.cat([live_vs_map, trans, curr_trans, dists])
+        # trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
+        # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
+        # dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map])  # , trans, curr_trans, dists])
         out = self.out(bottleneck).unsqueeze(0)
         return out
 

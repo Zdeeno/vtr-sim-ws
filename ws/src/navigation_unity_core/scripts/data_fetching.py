@@ -48,8 +48,12 @@ class DataFetching:
         in_diff = self.input_size - hists[0].shape[0]
         if in_diff > 0:
             in_append = np.zeros((in_diff, 1024))
-            out_hists = np.concatenate((in_append, hists[0]), axis=0)
-            out_map_trans = np.concatenate((in_append, map_trans[0]), axis=0)
+            if dists[0][0] < 2.0:
+                out_hists = np.concatenate((in_append, hists[0]), axis=0)
+                out_map_trans = np.concatenate((in_append, map_trans[0]), axis=0)
+            else:
+                out_hists = np.concatenate((hists[0], in_append), axis=0)
+                out_map_trans = np.concatenate((map_trans[0], in_append), axis=0)
         else:
             out_hists = hists[0]
             out_map_trans = map_trans[0]

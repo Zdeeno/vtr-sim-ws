@@ -200,7 +200,10 @@ class Simulator:
             self.plot_counter = 0
         if save_fig:
             rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
-            self.fig.savefig(HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
+            save_path = HOME + "/.ros/trajectory_plots/" + str(idx)
+            self.fig.savefig(save_path + ".jpg")
+            trajectory_print = np.stack([self.trav_x, self.trav_y])
+            np.savetxt(save_path + "_" + str(self.curr_map_idx) + ".csv", trajectory_print, delimiter=",")
 
     def rviz_trajectory(self, map_idx):
         marker_pub.publish(self.maps[map_idx].get_rviz_marker())

@@ -29,22 +29,23 @@ import rospy
 import os
 
 PRETRAINED = True
-lr = 3e-5
+lr = 1e-5
 max_grad_norm = 1.0
 
-frames_per_batch = 1000
+frames_per_batch = 500
 # For a complete training, bring the number of frames up to 1M
-total_frames = 100_000
+total_frames = 200_000
 
 
 sub_batch_size = 64  # cardinality of the sub-samples gathered from the current data in the inner loop
 num_epochs = 10  # optimisation steps per batch of data collected
 clip_epsilon = (
-    0.2  # clip value for PPO loss: see the equation in the intro for more context.
+    # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
+    0.5
 )
-gamma = 0.99
+gamma = 0.995
 lmbda = 0.95
-entropy_eps = 1e-4
+entropy_eps = 1e-1
 
 HOME = os.path.expanduser('~')
 SAVE_DIR = HOME + "/.ros/models/"
@@ -98,7 +99,7 @@ policy_module = ProbabilisticActor(
         "min": env.action_spec.space.low,
         "max": env.action_spec.space.high,
         # "event_dims": 2,
-        "tanh_loc": True
+        # "tanh_loc": True
     },
     return_log_prob=True,
     # we'll need the log-prob for the numerator of the importance weights
@@ -150,9 +151,9 @@ loss_module = ClipPPOLoss(
 )
 
 optim = torch.optim.Adam(loss_module.parameters(), lr)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    optim, total_frames // frames_per_batch, 0.0
-)
+# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+#     optim, total_frames // frames_per_batch, 0.0
+# )
 
 
 logs = defaultdict(list)
@@ -221,6 +222,7 @@ for i, tensordict_data in enumerate(collector):
 
     # We're also using a learning rate scheduler. Like the gradient clipping,
     # this is a nice-to-have but nothing necessary for PPO to work.
-    scheduler.step()
+    # scheduler.step()
     torch.save(actor_net.state_dict(), SAVE_DIR + "actor_net.pt")
     torch.save(value_net.state_dict(), SAVE_DIR + "value_net.pt")
+    # torch.save(scheduler.state_dict(), SAVE_DIR + "scheduler.pt")
