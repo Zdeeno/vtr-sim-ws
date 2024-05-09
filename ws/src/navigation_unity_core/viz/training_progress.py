@@ -4,7 +4,7 @@ import os
 import rosbag
 
 
-DIR = os.path.expanduser('~') + "/.ros/trajectory_plots"
+DIR = os.path.expanduser('~') + "/.ros/trajectory_plots_eval"
 map_idx = 0
 DIR_BAG = os.path.expanduser('~') + "/.ros/sim7_vtr/sim7_vtr.bag"
 #map_idx = 1
@@ -40,20 +40,20 @@ def fetch_map():
 
 for file in sorted(os.listdir(DIR), key=lambda x: int(x.split(".")[0].split("_")[0])):
     if file.endswith(str(map_idx) + ".csv"):
-        # print(file)
+        print(file)
         traj = np.genfromtxt(os.path.join(DIR, file), delimiter=",")
         all_trajs.append(np.genfromtxt(os.path.join(DIR, file), delimiter=","))
 
-
-cmap = plt.cm.get_cmap('coolwarm')
 plt.figure()
-for i, traj in enumerate(all_trajs):
-    clr = cmap(i / (len(all_trajs) - 1))
-    plt.plot(traj[0], traj[1], color=clr, alpha=0.75, linewidth=2.0)
-
 x, y = fetch_map()
 plt.plot(x, y, color="k", linewidth=3)
 limit = 5
+
+cmap = plt.cm.get_cmap('coolwarm')
+for i, traj in enumerate(all_trajs):
+    clr = cmap(i / (len(all_trajs) - 1))
+    plt.plot(traj[0], traj[1], color=clr, alpha=1.0, linewidth=2.0)
+
 plt.ylim([min(y) - limit, max(y) + limit])
 plt.xlim([min(x) - limit, max(x) + limit])
 plt.grid()

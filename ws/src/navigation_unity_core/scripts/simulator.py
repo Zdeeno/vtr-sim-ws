@@ -184,7 +184,7 @@ class Simulator:
         rospy.sleep(2)  # avoid plotting errors
         return new_map_idx, self.maps[new_map_idx].name, dist
 
-    def plt_robot(self, save_fig=False, idx=0):
+    def plt_robot(self, save_fig=False, idx=0, eval=False):
         # TODO: Throw away trav coords for long traversals
         if self.curr_x is not None and self.curr_y is not None:
             self.trav_x.append(self.curr_x)
@@ -200,7 +200,10 @@ class Simulator:
             self.plot_counter = 0
         if save_fig:
             rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
-            save_path = HOME + "/.ros/trajectory_plots/" + str(idx)
+            if eval:
+                save_path = HOME + "/.ros/trajectory_plots_eval/" + str(idx)
+            else:
+                save_path = HOME + "/.ros/trajectory_plots/" + str(idx)
             self.fig.savefig(save_path + ".jpg")
             trajectory_print = np.stack([self.trav_x, self.trav_y])
             np.savetxt(save_path + "_" + str(self.curr_map_idx) + ".csv", trajectory_print, delimiter=",")

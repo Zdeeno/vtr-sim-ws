@@ -341,9 +341,9 @@ class PPOActor(t.nn.Module):
         input_size += self.dist_hist_size * 2
 
         # histograms from visual data (1, 2, 5)
-        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 5, 512),
                                                 t.nn.ReLU(),
-                                                t.nn.Linear(128, 64))
+                                                t.nn.Linear(512, 512))
 
         self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
                                              t.nn.ReLU(),
@@ -357,7 +357,7 @@ class PPOActor(t.nn.Module):
                                             t.nn.ReLU(),
                                             t.nn.Linear(256, 64))
 
-        self.out = t.nn.Sequential(t.nn.Linear(5 * 64, 256),
+        self.out = t.nn.Sequential(t.nn.Linear(512, 256),
                                    t.nn.ReLU(),
                                    t.nn.Linear(256, 4))
 
@@ -370,7 +370,8 @@ class PPOActor(t.nn.Module):
         # rospy.logwarn(str(x.shape))
         # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
         # print(" -------------- INPUT SHAPE: \n" + str(x.shape))
-        live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        # live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        live_vs_map = self.live_map_encoder(x[:anchor1].view((1, self.hist_size * 5))).flatten()
         # trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
         # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
         # dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
@@ -410,9 +411,9 @@ class PPOValue(t.nn.Module):
         input_size += self.dist_hist_size * 2
 
         # histograms from visual data (1, 2, 5)
-        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 5, 512),
                                                 t.nn.ReLU(),
-                                                t.nn.Linear(128, 64))
+                                                t.nn.Linear(512, 512))
 
         self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
                                              t.nn.ReLU(),
@@ -426,7 +427,7 @@ class PPOValue(t.nn.Module):
                                             t.nn.ReLU(),
                                             t.nn.Linear(256, 64))
 
-        self.out = t.nn.Sequential(t.nn.Linear(5 * 64, 256),
+        self.out = t.nn.Sequential(t.nn.Linear(512, 256),
                                    t.nn.ReLU(),
                                    t.nn.Linear(256, 1))
 
@@ -436,7 +437,8 @@ class PPOValue(t.nn.Module):
         anchor3 = anchor2 + self.hist_size
         # rospy.logwarn(str(x.shape))
         # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
-        live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        # live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        live_vs_map = self.live_map_encoder(x[:anchor1].view((1, self.hist_size * 5))).flatten()
         # trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
         # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
         # dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()

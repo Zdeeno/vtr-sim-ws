@@ -33,6 +33,7 @@ class BaseInformed(BaseVTR):
         self.displacement = None
         self.phi_diff = None
         self.curr_dist = None
+        self.last_curr_dist = None
         self.repeating = False
         self.final_dist = None
         self.map_traj = None
@@ -71,6 +72,7 @@ class BaseInformed(BaseVTR):
 
     def reset(self):
         self.displacement = None
+        self.last_curr_dist = None
         self.phi_diff = None
         self.finished = True
         self.curr_dist = None
@@ -121,6 +123,8 @@ class BaseInformed(BaseVTR):
         # dists = abs(self.shortest_distance(self.map_traj[:, 0], self.map_traj[:, 1], self.map_phis, curr_pos[0], curr_pos[1]))
         self.nearest_idx = np.argmin(dists)
         self.curr_dist = self.dists[self.nearest_idx]
+        if self.last_curr_dist is None:
+            self.last_curr_dist = self.curr_dist
         # rospy.logwarn("Nearest IDX: " + str(nearest_idx))
 
         if self.dists[self.nearest_idx] >= self.final_dist - 0.3:
@@ -184,7 +188,6 @@ class VTREnv(BaseInformed):
 
         # vars
         self.curr_reward = 0.0
-        self.last_displacement = None
         self.last_x = None
         self.last_y = None
         self.last_phi = None
@@ -204,6 +207,7 @@ class VTREnv(BaseInformed):
         obs, failure = self.get_observation()
 
         reward = self.curr_reward
+        self.last_curr_dist = self.curr_dist
 
         # CHECK FINISH
         if self.est_dist + 0.3 > self.final_dist:
@@ -336,8 +340,8 @@ class VTREnv(BaseInformed):
             self.process_odom()
             self.processing.pubSensorsInput(self.est_dist)
             dist_err = abs(self.curr_dist - self.est_dist)
-            self.curr_reward = 5.0 - abs(self.displacement) - dist_err
-            self.last_displacement = self.displacement
+            covered_dist = self.curr_dist - self.last_curr_dist
+            self.curr_reward = 1 + covered_dist - abs(self.displacement) - dist_err
 
 
 class GymEnvironment(EnvBase):
@@ -352,6 +356,7 @@ class GymEnvironment(EnvBase):
         self.sim = None
         self.map_name = None
         self.traversal_idx = 0
+        self.eval = False
 
         self.sim = Simulator(MAP_DIR, pose_err_weight=1.0, rot_err_weight=np.pi / 16.0,
                              dist_weight=0.5, headless=True)
@@ -365,7 +370,7 @@ class GymEnvironment(EnvBase):
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.25, -0.5]], [[0.25, 0.5]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
-        self.reward_spec = BoundedTensorSpec(0.0, 5.0, t.Size([1]), self.device)
+        self.reward_spec = BoundedTensorSpec(-7.0, 2.0, t.Size([1]), self.device)
         self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1]), dtype=t.bool)
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):
@@ -388,15 +393,18 @@ class GymEnvironment(EnvBase):
             failure = True
         if self.finished:
             self.vtr.control_pub.publish(Twist())
-            self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
+            self.sim.plt_robot(save_fig=True, idx=self.traversal_idx, eval=self.eval)
             if not failure:
                 self.sim.traversal_summary()
-        reward = max(reward, 0.0)
+        reward = max(reward, -7.0)
         # rospy.logwarn("observation: " + str(obs.shape) + ", has inf: " + str(t.any(t.isinf(obs))))
         return TensorDict({"observation": obs.unsqueeze(0),
                            "reward": t.tensor([reward], device=self.device).float(),
                            "done": t.tensor([self.finished], device=self.device)},
                           batch_size=[1])
+
+    def set_eval(self, value: bool):
+        self.eval = value
 
     def _reset(self, tensordict=None):
         self.vtr.reset()

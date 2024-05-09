@@ -28,8 +28,8 @@ from nn_model import PPOActor, PPOValue
 import rospy
 import os
 
-PRETRAINED = True
-lr = 1e-5
+PRETRAINED = False
+lr = 5e-5
 max_grad_norm = 1.0
 
 frames_per_batch = 500
@@ -37,11 +37,11 @@ frames_per_batch = 500
 total_frames = 200_000
 
 
-sub_batch_size = 64  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 10  # optimisation steps per batch of data collected
+sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
+num_epochs = 16  # optimisation steps per batch of data collected
 clip_epsilon = (
     # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
-    0.5
+    0.3
 )
 gamma = 0.995
 lmbda = 0.95
@@ -143,7 +143,7 @@ loss_module = ClipPPOLoss(
     actor_network=policy_module,
     critic_network=value_module,
     clip_epsilon=clip_epsilon,
-    entropy_bonus=bool(entropy_eps),
+    entropy_bonus=True,
     entropy_coef=entropy_eps,
     # these keys match by default but we set this for completeness
     critic_coef=1.0,
@@ -197,7 +197,7 @@ for i, tensordict_data in enumerate(collector):
     stepcount_str = f"step count (max): {logs['step_count'][-1]}"
     logs["lr"].append(optim.param_groups[0]["lr"])
     lr_str = f"lr policy: {logs['lr'][-1]: 4.4f}"
-    if i % 10 == 0:
+    if i % 1 == 0:
         # We evaluate the policy once every 10 batches of data.
         # Evaluation is rather simple: execute the policy without exploration
         # (take the expected value of the action distribution) for a given
@@ -206,6 +206,7 @@ for i, tensordict_data in enumerate(collector):
         # it will then execute this policy at each step.
         with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
             # execute a rollout with the trained policy
+            env.set_eval(True)
             eval_rollout = env.rollout(1000, policy_module)
             logs["eval reward"].append(eval_rollout["next", "reward"].mean().item())
             logs["eval reward (sum)"].append(
@@ -217,6 +218,7 @@ for i, tensordict_data in enumerate(collector):
                 f"(init: {logs['eval reward (sum)'][0]: 4.4f}), "
                 f"eval step-count: {logs['eval step_count'][-1]}"
             )
+            env.set_eval(False)
             del eval_rollout
     pbar.set_description(", ".join([eval_str, cum_reward_str, stepcount_str, lr_str]))
 
