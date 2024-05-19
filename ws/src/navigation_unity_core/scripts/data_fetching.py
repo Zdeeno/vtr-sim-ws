@@ -57,7 +57,8 @@ class DataFetching:
         else:
             out_hists = hists[0]
             out_map_trans = map_trans[0]
-        self.data = (dists, out_hists, out_map_trans, np.expand_dims(live_hist, axis=0))
+        # self.data = (dists, out_hists, out_map_trans, np.expand_dims(live_hist, axis=0))
+        self.data = (dists, out_hists, out_map_trans)
         self.has_new_obs = True
 
     def get_live_data(self):

@@ -341,7 +341,7 @@ class VTREnv(BaseInformed):
             self.processing.pubSensorsInput(self.est_dist)
             dist_err = abs(self.curr_dist - self.est_dist)
             covered_dist = self.curr_dist - self.last_curr_dist
-            self.curr_reward = 1 + covered_dist - abs(self.displacement) - dist_err
+            self.curr_reward = 10.0 + covered_dist - abs(self.displacement) - dist_err
 
 
 class GymEnvironment(EnvBase):
@@ -370,7 +370,7 @@ class GymEnvironment(EnvBase):
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.25, -0.5]], [[0.25, 0.5]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
-        self.reward_spec = BoundedTensorSpec(-7.0, 2.0, t.Size([1]), self.device)
+        self.reward_spec = BoundedTensorSpec(-7.0, 5.0, t.Size([1]), self.device)
         self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1]), dtype=t.bool)
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):

@@ -343,21 +343,21 @@ class PPOActor(t.nn.Module):
         # histograms from visual data (1, 2, 5)
         self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 5, 512),
                                                 t.nn.ReLU(),
-                                                t.nn.Linear(512, 512))
+                                                t.nn.Linear(512, 5*64))
 
-        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 4, 512),
                                              t.nn.ReLU(),
-                                             t.nn.Linear(128, 64))
+                                             t.nn.Linear(512, 4*64))
 
         self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
                                                   t.nn.ReLU(),
                                                   t.nn.Linear(128, 64))
 
-        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 128),
                                             t.nn.ReLU(),
-                                            t.nn.Linear(256, 64))
+                                            t.nn.Linear(128, 64))
 
-        self.out = t.nn.Sequential(t.nn.Linear(512, 256),
+        self.out = t.nn.Sequential(t.nn.Linear(640, 256),
                                    t.nn.ReLU(),
                                    t.nn.Linear(256, 4))
 
@@ -372,10 +372,10 @@ class PPOActor(t.nn.Module):
         # print(" -------------- INPUT SHAPE: \n" + str(x.shape))
         # live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
         live_vs_map = self.live_map_encoder(x[:anchor1].view((1, self.hist_size * 5))).flatten()
-        # trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
+        trans = self.trans_encoder(x[anchor1:anchor2].view((1, self.hist_size * 4))).flatten()
         # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
-        # dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
-        bottleneck = t.cat([live_vs_map])  # , trans, curr_trans, dists])
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map, trans, dists])
         out = self.out(bottleneck).unsqueeze(0)
         return out
 
@@ -397,6 +397,114 @@ class PPOActor(t.nn.Module):
         return normed_out
 
 
+class TD3Actor(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 5, 512),
+                                                t.nn.ReLU(),
+                                                t.nn.Linear(512, 5*64))
+
+        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 4, 512),
+                                             t.nn.ReLU(),
+                                             t.nn.Linear(512, 4*64))
+
+        self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                                  t.nn.ReLU(),
+                                                  t.nn.Linear(128, 64))
+
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 128),
+                                            t.nn.ReLU(),
+                                            t.nn.Linear(128, 64))
+
+        self.out = t.nn.Sequential(t.nn.Linear(640, 256),
+                                   t.nn.ReLU(),
+                                   t.nn.Linear(256, 2))
+
+    def pass_network(self, x):
+        anchor1 = self.map_obs_size * self.hist_size
+        anchor2 = (self.map_obs_size * self.hist_size)*2 - self.hist_size
+        anchor3 = anchor2 + self.hist_size
+        # rospy.logwarn(str(x.shape))
+        # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
+        # print(" -------------- INPUT SHAPE: \n" + str(x.shape))
+        # live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        live_vs_map = self.live_map_encoder(x[:anchor1].view((1, self.hist_size * 5))).flatten()
+        trans = self.trans_encoder(x[anchor1:anchor2].view((1, self.hist_size * 4))).flatten()
+        # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map, trans, dists])
+        out = self.out(bottleneck).unsqueeze(0)
+        out = t.tanh(out) * 0.5
+        print(out)
+        return out
+
+    def forward(self, x):
+        # print("PASSING ACTOR: " + str(x.shape))
+        if x.shape[0] > 1:
+            batch_size = x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                x_one = x[i]
+                out = self.pass_network(x_one)
+                out_list.append(out)
+            out = t.cat(out_list, dim=0)
+        else:
+            x = x[0, :]
+            out = self.pass_network(x)
+        return out
+
+class TD3ActorSimple(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.ff = t.nn.Sequential(t.nn.Linear(self.hist_size * 9 + self.dist_hist_size, 512),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(512, 256),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(256, 2))
+
+    def pass_network(self, x):
+        out = self.ff(x)
+        out = t.tanh(out) * 0.5
+        print(out)
+        return out.unsqueeze(0)
+
+    def forward(self, x):
+        # print("PASSING ACTOR: " + str(x.shape))
+        if x.shape[0] > 1:
+            batch_size = x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                x_one = x[i]
+                out = self.pass_network(x_one)
+                out_list.append(out)
+            out = t.cat(out_list, dim=0)
+        else:
+            x = x[0, :]
+            out = self.pass_network(x)
+        return out
+
 class PPOValue(t.nn.Module):
 
     def __init__(self, lookaround: int, dist_window=8):
@@ -413,21 +521,21 @@ class PPOValue(t.nn.Module):
         # histograms from visual data (1, 2, 5)
         self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 5, 512),
                                                 t.nn.ReLU(),
-                                                t.nn.Linear(512, 512))
+                                                t.nn.Linear(512, 5*64))
 
-        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 4, 512),
                                              t.nn.ReLU(),
-                                             t.nn.Linear(128, 64))
+                                             t.nn.Linear(512, 4*64))
 
         self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
                                                   t.nn.ReLU(),
                                                   t.nn.Linear(128, 64))
 
-        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 256),
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 128),
                                             t.nn.ReLU(),
-                                            t.nn.Linear(256, 64))
+                                            t.nn.Linear(128, 64))
 
-        self.out = t.nn.Sequential(t.nn.Linear(512, 256),
+        self.out = t.nn.Sequential(t.nn.Linear(640, 256),
                                    t.nn.ReLU(),
                                    t.nn.Linear(256, 1))
 
@@ -439,10 +547,10 @@ class PPOValue(t.nn.Module):
         # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
         # live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
         live_vs_map = self.live_map_encoder(x[:anchor1].view((1, self.hist_size * 5))).flatten()
-        # trans = self.trans_encoder(x[anchor1:anchor2].view((self.map_obs_size - 1, self.hist_size))).flatten()
+        trans = self.trans_encoder(x[anchor1:anchor2].view((1, self.hist_size * 4))).flatten()
         # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
-        # dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
-        bottleneck = t.cat([live_vs_map])  # , trans, curr_trans, dists])
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        bottleneck = t.cat([live_vs_map, trans, dists])
         out = self.out(bottleneck).unsqueeze(0)
         return out
 
@@ -452,8 +560,8 @@ class PPOValue(t.nn.Module):
             batch_size = batched_x.shape[0]
             out_list = []
             for i in range(batch_size):
-                x = batched_x[i]
-                out = self.pass_network(x)
+                tmp_x = batched_x[i]
+                out = self.pass_network(tmp_x)
                 out_list.append(out)
             out = t.cat(out_list, dim=1)
             return out
@@ -463,11 +571,189 @@ class PPOValue(t.nn.Module):
             batch_size = batched_x.shape[0]
             out_list = []
             for i in range(batch_size):
-                x = batched_x[i]
-                out = self.pass_network(x)
+                tmp_x = batched_x[i]
+                out = self.pass_network(tmp_x)
                 out_list.append(out)
             out = t.cat(out_list, dim=1)
             return out[0]
 
         x = x[0, :]
         return self.pass_network(x)
+
+
+class TD3Value(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.live_map_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 5, 512),
+                                                t.nn.ReLU(),
+                                                t.nn.Linear(512, 5*64))
+
+        self.trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size * 4, 512),
+                                             t.nn.ReLU(),
+                                             t.nn.Linear(512, 4*64))
+
+        self.curr_trans_encoder = t.nn.Sequential(t.nn.Linear(self.hist_size, 128),
+                                                  t.nn.ReLU(),
+                                                  t.nn.Linear(128, 64))
+
+        self.dist_encoder = t.nn.Sequential(t.nn.Linear(self.dist_hist_size, 128),
+                                            t.nn.ReLU(),
+                                            t.nn.Linear(128, 64))
+
+        self.action_encoder = t.nn.Sequential(t.nn.Linear(2, 256),
+                                              t.nn.ReLU(),
+                                              t.nn.Linear(256, 16))
+
+        self.out = t.nn.Sequential(t.nn.Linear(656, 256),
+                                   t.nn.ReLU(),
+                                   t.nn.Linear(256, 1))
+
+    def pass_network(self, x, action):
+        anchor1 = self.map_obs_size * self.hist_size
+        anchor2 = (self.map_obs_size * self.hist_size) * 2 - self.hist_size
+        anchor3 = anchor2 + self.hist_size
+        # rospy.logwarn(str(x.shape))
+        # rospy.logwarn(str(anchor1) + "," + str(anchor2) + ", " + str(anchor3))
+        # live_vs_map = self.live_map_encoder(x[:anchor1].view((self.map_obs_size, self.hist_size))).flatten()
+        live_vs_map = self.live_map_encoder(x[:anchor1].view((1, self.hist_size * 5))).flatten()
+        trans = self.trans_encoder(x[anchor1:anchor2].view((1, self.hist_size * 4))).flatten()
+        # curr_trans = self.curr_trans_encoder(x[anchor2:anchor3].view((1, self.hist_size))).flatten()
+        dists = self.dist_encoder(x[anchor3:].view((1, self.dist_hist_size))).flatten()
+        action_emb = self.action_encoder(action).flatten()
+        bottleneck = t.cat([live_vs_map, trans, dists, action_emb])
+        out = self.out(bottleneck).unsqueeze(0)
+        print(out)
+        return out
+
+    def forward(self, x, action):
+        if len(x.shape) > 2:
+            batched_x = x[0]
+            batched_action = action[0]
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                tmp_action = batched_action[i]
+                out = self.pass_network(tmp_x, tmp_action)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out
+
+        if x.shape[0] > 1:
+            batched_x = x
+            batched_action = action
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                tmp_action = batched_action[i]
+                out = self.pass_network(tmp_x, tmp_action)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out[0]
+
+        x = x[0, :]
+        action = action[0, :]
+        out = self.pass_network(x, action)
+        return out
+
+
+class TD3ValueSimple(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.ff = t.nn.Sequential(t.nn.Linear(self.hist_size * 9 + self.dist_hist_size + 2, 512),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(512, 256),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(256, 1))
+
+    def pass_network(self, x, action):
+        out = self.ff(t.cat([x, action], dim=-1))
+        print(out)
+        return out.unsqueeze(0)
+
+    def forward(self, x, action):
+        if len(x.shape) > 2:
+            batched_x = x[0]
+            batched_action = action[0]
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                tmp_action = batched_action[i]
+                out = self.pass_network(tmp_x, tmp_action)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out
+
+        if x.shape[0] > 1:
+            batched_x = x
+            batched_action = action
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                tmp_action = batched_action[i]
+                out = self.pass_network(tmp_x, tmp_action)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out[0]
+
+        x = x[0, :]
+        action = action[0, :]
+        out = self.pass_network(x, action)
+        return out
+
+    def forward(self, x, action):
+        if len(x.shape) > 2:
+            batched_x = x[0]
+            batched_action = action[0]
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                tmp_action = batched_action[i]
+                out = self.pass_network(tmp_x, tmp_action)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out
+
+        if x.shape[0] > 1:
+            batched_x = x
+            batched_action = action
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                tmp_action = batched_action[i]
+                out = self.pass_network(tmp_x, tmp_action)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out[0]
+
+        x = x[0, :]
+        action = action[0, :]
+        out = self.pass_network(x, action)
+        return out

@@ -20,30 +20,31 @@ from torchrl.envs import (
 from torchrl.envs.libs.gym import GymEnv
 from torchrl.envs.utils import check_env_specs, ExplorationType, set_exploration_type
 from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
-from torchrl.objectives import ClipPPOLoss
+from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss
 from torchrl.objectives.value import GAE
 from tqdm import tqdm
 from gym_env import GymEnvironment
 from nn_model import PPOActor, PPOValue
 import rospy
 import os
+import tensordict
 
-PRETRAINED = False
-lr = 5e-5
+PRETRAINED = True
+lr = 3e-6
 max_grad_norm = 1.0
 
-frames_per_batch = 500
+frames_per_batch = 1000
 # For a complete training, bring the number of frames up to 1M
-total_frames = 200_000
+total_frames = 1_000_000
 
 
-sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
+sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
 num_epochs = 16  # optimisation steps per batch of data collected
 clip_epsilon = (
     # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
     0.3
 )
-gamma = 0.995
+gamma = 0.95
 lmbda = 0.95
 entropy_eps = 1e-1
 
@@ -102,6 +103,7 @@ policy_module = ProbabilisticActor(
         # "tanh_loc": True
     },
     return_log_prob=True,
+    default_interaction_type=tensordict.nn.InteractionType.MEAN
     # we'll need the log-prob for the numerator of the importance weights
 )
 
@@ -126,6 +128,7 @@ collector = SyncDataCollector(
     total_frames=total_frames,
     split_trajs=False,
     device=device,
+    exploration_type=ExplorationType.MEAN,
 )
 
 
@@ -139,16 +142,27 @@ advantage_module = GAE(
     gamma=gamma, lmbda=lmbda, value_network=value_module, average_gae=True
 )
 
-loss_module = ClipPPOLoss(
+# loss_module = ClipPPOLoss(
+#     actor_network=policy_module,
+#     critic_network=value_module,
+#     clip_epsilon=clip_epsilon,
+#     entropy_bonus=True,
+#     entropy_coef=entropy_eps,
+#     # these keys match by default but we set this for completeness
+#     critic_coef=1.0,
+#     loss_critic_type="smooth_l1",
+# )
+
+loss_module = KLPENPPOLoss(
     actor_network=policy_module,
     critic_network=value_module,
-    clip_epsilon=clip_epsilon,
     entropy_bonus=True,
     entropy_coef=entropy_eps,
     # these keys match by default but we set this for completeness
     critic_coef=1.0,
     loss_critic_type="smooth_l1",
 )
+
 
 optim = torch.optim.Adam(loss_module.parameters(), lr)
 # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
