@@ -199,12 +199,12 @@ class Simulator:
             self.fig.canvas.flush_events()
             self.plot_counter = 0
         if save_fig:
-            rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".jpg")
+            rospy.logwarn("Saving trajectory image to: " + HOME + "/.ros/trajectory_plots/" + str(idx) + ".png")
             if eval:
                 save_path = HOME + "/.ros/trajectory_plots_eval/" + str(idx)
             else:
                 save_path = HOME + "/.ros/trajectory_plots/" + str(idx)
-            self.fig.savefig(save_path + ".jpg")
+            self.fig.savefig(save_path + ".png")
             trajectory_print = np.stack([self.trav_x, self.trav_y])
             np.savetxt(save_path + "_" + str(self.curr_map_idx) + ".csv", trajectory_print, delimiter=",")
 
