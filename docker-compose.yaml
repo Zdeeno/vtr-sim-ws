@@ -1,7 +1,5 @@
 services:
   app:
     image: unity-sim:latest
-    command: sh -c "docker_tmux.sh"
+    command: sh -c "./docker_tmux.sh && sleep infinity"
     working_dir: /app
-    volumes:
-      - ./:/app

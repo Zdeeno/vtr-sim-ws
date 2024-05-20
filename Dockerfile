@@ -12,3 +12,14 @@ RUN pip install rosnumpy
 RUN pip install torchvision
 RUN pip install torchrl
 RUN pip install tensordict
+RUN pip install scipy
+RUN pip install tqdm
+
+RUN mkdir /app
+COPY . /app
+
+WORKDIR /app/ws
+RUN catkin clean -y
+RUN source /opt/ros/noetic/setup.bash && catkin b
+
+WORKDIR /app
