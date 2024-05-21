@@ -341,7 +341,7 @@ class VTREnv(BaseInformed):
             self.processing.pubSensorsInput(self.est_dist)
             dist_err = abs(self.curr_dist - self.est_dist)
             covered_dist = self.curr_dist - self.last_curr_dist
-            self.curr_reward = 10.0 + covered_dist - abs(self.displacement) - dist_err
+            self.curr_reward = 10.0 + covered_dist - abs(self.displacement) - 2*dist_err
 
 
 class GymEnvironment(EnvBase):

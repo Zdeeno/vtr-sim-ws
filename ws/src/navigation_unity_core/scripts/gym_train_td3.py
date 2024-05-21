@@ -31,10 +31,10 @@ import os
 
 PRETRAINED = False
 lr_actor = 1e-5
-lr_value = 3e-5
+lr_value = 1e-4
 max_grad_norm = 1.0
 
-frames_per_batch = 512
+frames_per_batch = 1024
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
 
@@ -48,7 +48,7 @@ clip_epsilon = (
 gamma = 0.998
 lmbda = 0.95
 entropy_eps = 1e-1
-tau = 0.001
+tau = 0.01
 
 HOME = os.path.expanduser('~')
 SAVE_DIR = HOME + "/.ros/models/"
@@ -114,10 +114,10 @@ value_module = ValueOperator(
 
 actor_model_explore = AdditiveGaussianWrapper(
     policy_module,
-    annealing_num_steps=300,
+    annealing_num_steps=1_000,
     mean=0.0,
-    sigma_init=0.03,
-    sigma_end=0.01,
+    sigma_init=0.1,
+    sigma_end=0.02,
     spec=env.action_spec
 ).to(device)
 

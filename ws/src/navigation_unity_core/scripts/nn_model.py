@@ -397,6 +397,51 @@ class PPOActor(t.nn.Module):
         return normed_out
 
 
+class PPOActorSimple(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.ff = t.nn.Sequential(t.nn.Linear(self.hist_size * 9 + self.dist_hist_size, 512),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(512, 256),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(256, 4))
+
+        self.norm = NormalParamExtractor()
+
+
+    def pass_network(self, x):
+        out = self.ff(x)
+        return out.unsqueeze(0)
+
+    def forward(self, x):
+        # print("PASSING ACTOR: " + str(x.shape))
+        if x.shape[0] > 1:
+            batch_size = x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                x_one = x[i]
+                out = self.pass_network(x_one)
+                out_list.append(out)
+            out = t.cat(out_list, dim=0)
+        else:
+            x = x[0, :]
+            out = self.pass_network(x)
+        normed_out = self.norm(out)
+        print(normed_out)
+        return normed_out
+
+
 class TD3Actor(t.nn.Module):
 
     def __init__(self, lookaround: int, dist_window=8):
@@ -553,6 +598,58 @@ class PPOValue(t.nn.Module):
         bottleneck = t.cat([live_vs_map, trans, dists])
         out = self.out(bottleneck).unsqueeze(0)
         return out
+
+    def forward(self, x):
+        if len(x.shape) > 2:
+            batched_x = x[0]
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                out = self.pass_network(tmp_x)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out
+
+        if x.shape[0] > 1:
+            batched_x = x
+            batch_size = batched_x.shape[0]
+            out_list = []
+            for i in range(batch_size):
+                tmp_x = batched_x[i]
+                out = self.pass_network(tmp_x)
+                out_list.append(out)
+            out = t.cat(out_list, dim=1)
+            return out[0]
+
+        x = x[0, :]
+        return self.pass_network(x)
+
+
+class PPOValueSimple(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.ff = t.nn.Sequential(t.nn.Linear(self.hist_size * 9 + self.dist_hist_size, 512),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(512, 256),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(256, 1))
+
+    def pass_network(self, x):
+        out = self.ff(x)
+        print(out)
+        return out.unsqueeze(0)
 
     def forward(self, x):
         if len(x.shape) > 2:

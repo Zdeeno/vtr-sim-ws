@@ -8,11 +8,12 @@ from torch import nn
 
 from torchrl.collectors import SyncDataCollector
 from torchrl.data.replay_buffers import ReplayBuffer
-from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
+from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement, PrioritizedSampler
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
 from torchrl.envs import (
     Compose,
     DoubleToFloat,
+    InitTracker,
     ObservationNorm,
     StepCounter,
     TransformedEnv,
@@ -24,7 +25,7 @@ from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss
 from torchrl.objectives.value import GAE
 from tqdm import tqdm
 from gym_env import GymEnvironment
-from nn_model import PPOActor, PPOValue
+from nn_model import PPOActorSimple, PPOValueSimple
 import rospy
 import os
 import tensordict
@@ -39,7 +40,7 @@ total_frames = 1_000_000
 
 
 sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 16  # optimisation steps per batch of data collected
+num_epochs = 8  # optimisation steps per batch of data collected
 clip_epsilon = (
     # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
     0.3
@@ -61,6 +62,7 @@ env = TransformedEnv(
     Compose(
         # normalize observations
         # ObservationNorm(in_keys=["observation"]),
+        InitTracker(),
         DoubleToFloat(),
         StepCounter(),
     ),
@@ -83,7 +85,7 @@ env = TransformedEnv(
 
 print("------------ ENVIRONMENT CHECK DONE - INITIALIZING NETWORKS -------------")
 
-actor_net = PPOActor(2).float().to(device)
+actor_net = PPOActorSimple(2).float().to(device)
 if PRETRAINED:
     actor_net.load_state_dict(torch.load(SAVE_DIR + "actor_net.pt"))
 
@@ -107,7 +109,7 @@ policy_module = ProbabilisticActor(
     # we'll need the log-prob for the numerator of the importance weights
 )
 
-value_net = PPOValue(2).float().to(device)
+value_net = PPOValueSimple(2).float().to(device)
 if PRETRAINED:
     value_net.load_state_dict(torch.load(SAVE_DIR + "value_net.pt"))
 
@@ -133,8 +135,9 @@ collector = SyncDataCollector(
 
 
 replay_buffer = ReplayBuffer(
-    storage=LazyTensorStorage(max_size=frames_per_batch),
-    sampler=SamplerWithoutReplacement(),
+    storage=LazyTensorStorage(max_size=frames_per_batch * 10),
+    # sampler=SamplerWithoutReplacement(),
+    sampler=PrioritizedSampler(10_000, 0.7, 0.5)
 )
 
 

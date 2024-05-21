@@ -18,7 +18,7 @@ import yaml
 import time
 
 np.random.seed(17)
-plt.switch_backend('TKAgg')
+plt.switch_backend('Agg')
 home = os.path.expanduser('~')
 scenes = ["forest", "mall"]
 
@@ -134,7 +134,7 @@ class Simulator:
         self.reset_world = rospy.ServiceProxy('reset_world', ResetWorld)
 
         # parsing maps
-        all_map_dirs = [f.path for f in os.scandir(map_dir) if f.is_dir() and "vtr" in f.path]
+        all_map_dirs = sorted([f.path for f in os.scandir(map_dir) if f.is_dir() and "vtr" in f.path])
         self.maps = [Map(p) for p in all_map_dirs]
         rospack = rospkg.RosPack()
         # sub gt position
