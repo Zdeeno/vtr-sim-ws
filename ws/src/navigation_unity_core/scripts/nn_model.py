@@ -422,22 +422,22 @@ class PPOActorSimple(t.nn.Module):
 
     def pass_network(self, x):
         out = self.ff(x)
-        return out.unsqueeze(0)
+        return out
 
     def forward(self, x):
         # print("PASSING ACTOR: " + str(x.shape))
-        if x.shape[0] > 1:
-            batch_size = x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                x_one = x[i]
-                out = self.pass_network(x_one)
-                out_list.append(out)
-            out = t.cat(out_list, dim=0)
-        else:
-            x = x[0, :]
-            out = self.pass_network(x)
-        normed_out = self.norm(out)
+        # if x.shape[0] > 1:
+        #     batch_size = x.shape[0]
+        #     out_list = []
+        #     for i in range(batch_size):
+        #         x_one = x[i]
+        #         out = self.pass_network(x_one)
+        #         out_list.append(out)
+        #     out = t.cat(out_list, dim=0)
+        # else:
+        #     x = x[0, :]
+        #     out = self.pass_network(x)
+        normed_out = self.norm(self.pass_network(x))
         print(normed_out)
         return normed_out
 
@@ -533,22 +533,22 @@ class TD3ActorSimple(t.nn.Module):
         out = self.ff(x)
         out = t.tanh(out) * 0.5
         print(out)
-        return out.unsqueeze(0)
+        return out
 
     def forward(self, x):
         # print("PASSING ACTOR: " + str(x.shape))
-        if x.shape[0] > 1:
-            batch_size = x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                x_one = x[i]
-                out = self.pass_network(x_one)
-                out_list.append(out)
-            out = t.cat(out_list, dim=0)
-        else:
-            x = x[0, :]
-            out = self.pass_network(x)
-        return out
+        # if x.shape[0] > 1:
+        #     batch_size = x.shape[0]
+        #     out_list = []
+        #     for i in range(batch_size):
+        #         x_one = x[i]
+        #         out = self.pass_network(x_one)
+        #         out_list.append(out)
+        #     out = t.cat(out_list, dim=0)
+        # else:
+        #     x = x[0, :]
+        #     out = self.pass_network(x)
+        return self.pass_network(x)
 
 class PPOValue(t.nn.Module):
 
@@ -649,32 +649,32 @@ class PPOValueSimple(t.nn.Module):
     def pass_network(self, x):
         out = self.ff(x)
         print(out)
-        return out.unsqueeze(0)
+        return out
 
     def forward(self, x):
-        if len(x.shape) > 2:
-            batched_x = x[0]
-            batch_size = batched_x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                tmp_x = batched_x[i]
-                out = self.pass_network(tmp_x)
-                out_list.append(out)
-            out = t.cat(out_list, dim=1)
-            return out
-
-        if x.shape[0] > 1:
-            batched_x = x
-            batch_size = batched_x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                tmp_x = batched_x[i]
-                out = self.pass_network(tmp_x)
-                out_list.append(out)
-            out = t.cat(out_list, dim=1)
-            return out[0]
-
-        x = x[0, :]
+        # if len(x.shape) > 2:
+        #     batched_x = x[0]
+        #     batch_size = batched_x.shape[0]
+        #     out_list = []
+        #     for i in range(batch_size):
+        #         tmp_x = batched_x[i]
+        #         out = self.pass_network(tmp_x)
+        #         out_list.append(out)
+        #     out = t.cat(out_list, dim=1)
+        #     return out
+#
+        # if x.shape[0] > 1:
+        #     batched_x = x
+        #     batch_size = batched_x.shape[0]
+        #     out_list = []
+        #     for i in range(batch_size):
+        #         tmp_x = batched_x[i]
+        #         out = self.pass_network(tmp_x)
+        #         out_list.append(out)
+        #     out = t.cat(out_list, dim=1)
+        #     return out[0]
+#
+        # x = x[0, :]
         return self.pass_network(x)
 
 
@@ -789,68 +789,36 @@ class TD3ValueSimple(t.nn.Module):
     def pass_network(self, x, action):
         out = self.ff(t.cat([x, action], dim=-1))
         print(out)
-        return out.unsqueeze(0)
-
-    def forward(self, x, action):
-        if len(x.shape) > 2:
-            batched_x = x[0]
-            batched_action = action[0]
-            batch_size = batched_x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                tmp_x = batched_x[i]
-                tmp_action = batched_action[i]
-                out = self.pass_network(tmp_x, tmp_action)
-                out_list.append(out)
-            out = t.cat(out_list, dim=1)
-            return out
-
-        if x.shape[0] > 1:
-            batched_x = x
-            batched_action = action
-            batch_size = batched_x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                tmp_x = batched_x[i]
-                tmp_action = batched_action[i]
-                out = self.pass_network(tmp_x, tmp_action)
-                out_list.append(out)
-            out = t.cat(out_list, dim=1)
-            return out[0]
-
-        x = x[0, :]
-        action = action[0, :]
-        out = self.pass_network(x, action)
         return out
 
     def forward(self, x, action):
-        if len(x.shape) > 2:
-            batched_x = x[0]
-            batched_action = action[0]
-            batch_size = batched_x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                tmp_x = batched_x[i]
-                tmp_action = batched_action[i]
-                out = self.pass_network(tmp_x, tmp_action)
-                out_list.append(out)
-            out = t.cat(out_list, dim=1)
-            return out
-
-        if x.shape[0] > 1:
-            batched_x = x
-            batched_action = action
-            batch_size = batched_x.shape[0]
-            out_list = []
-            for i in range(batch_size):
-                tmp_x = batched_x[i]
-                tmp_action = batched_action[i]
-                out = self.pass_network(tmp_x, tmp_action)
-                out_list.append(out)
-            out = t.cat(out_list, dim=1)
-            return out[0]
-
-        x = x[0, :]
-        action = action[0, :]
+        # if len(x.shape) > 2:
+        #     batched_x = x[0]
+        #     batched_action = action[0]
+        #     batch_size = batched_x.shape[0]
+        #     out_list = []
+        #     for i in range(batch_size):
+        #         tmp_x = batched_x[i]
+        #         tmp_action = batched_action[i]
+        #         out = self.pass_network(tmp_x, tmp_action)
+        #         out_list.append(out)
+        #     out = t.cat(out_list, dim=1)
+        #     return out
+#
+        # if x.shape[0] > 1:
+        #     batched_x = x
+        #     batched_action = action
+        #     batch_size = batched_x.shape[0]
+        #     out_list = []
+        #     for i in range(batch_size):
+        #         tmp_x = batched_x[i]
+        #         tmp_action = batched_action[i]
+        #         out = self.pass_network(tmp_x, tmp_action)
+        #         out_list.append(out)
+        #     out = t.cat(out_list, dim=1)
+        #     return out[0]
+#
+        # x = x[0, :]
+        # action = action[0, :]
         out = self.pass_network(x, action)
         return out

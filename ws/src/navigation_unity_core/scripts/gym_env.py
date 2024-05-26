@@ -339,9 +339,9 @@ class VTREnv(BaseInformed):
             _ = super().get_control_command(msg)
             self.process_odom()
             self.processing.pubSensorsInput(self.est_dist)
-            dist_err = abs(self.curr_dist - self.est_dist)
+            dist_err = self.curr_dist - self.est_dist
             covered_dist = self.curr_dist - self.last_curr_dist
-            self.curr_reward = 10.0 + covered_dist - abs(self.displacement) - 2*dist_err
+            self.curr_reward = 10.0 + covered_dist - abs(self.displacement) - abs(dist_err)
 
 
 class GymEnvironment(EnvBase):
@@ -370,8 +370,8 @@ class GymEnvironment(EnvBase):
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.25, -0.5]], [[0.25, 0.5]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
-        self.reward_spec = BoundedTensorSpec(-7.0, 5.0, t.Size([1]), self.device)
-        self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1]), dtype=t.bool)
+        self.reward_spec = BoundedTensorSpec(-7.0, 5.0, t.Size([1, 1]), self.device)
+        self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1, 1]), dtype=t.bool)
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):
         time.sleep(3)
@@ -399,8 +399,8 @@ class GymEnvironment(EnvBase):
         reward = max(reward, -7.0)
         # rospy.logwarn("observation: " + str(obs.shape) + ", has inf: " + str(t.any(t.isinf(obs))))
         return TensorDict({"observation": obs.unsqueeze(0),
-                           "reward": t.tensor([reward], device=self.device).float(),
-                           "done": t.tensor([self.finished], device=self.device)},
+                           "reward": t.tensor([reward], device=self.device).unsqueeze(0).float(),
+                           "done": t.tensor([self.finished], device=self.device).unsqueeze(0)},
                           batch_size=[1])
 
     def set_eval(self, value: bool):

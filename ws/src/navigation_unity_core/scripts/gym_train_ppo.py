@@ -7,7 +7,7 @@ from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn
 
 from torchrl.collectors import SyncDataCollector
-from torchrl.data.replay_buffers import ReplayBuffer
+from torchrl.data.replay_buffers import TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement, PrioritizedSampler
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
 from torchrl.envs import (
@@ -34,13 +34,13 @@ PRETRAINED = True
 lr = 3e-6
 max_grad_norm = 1.0
 
-frames_per_batch = 1000
+frames_per_batch = 1024
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
 
 
 sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 8  # optimisation steps per batch of data collected
+num_epochs = 2  # optimisation steps per batch of data collected
 clip_epsilon = (
     # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
     0.3
@@ -130,11 +130,11 @@ collector = SyncDataCollector(
     total_frames=total_frames,
     split_trajs=False,
     device=device,
-    exploration_type=ExplorationType.MEAN,
+    # exploration_type=ExplorationType.MEAN,
 )
 
 
-replay_buffer = ReplayBuffer(
+replay_buffer = TensorDictReplayBuffer(
     storage=LazyTensorStorage(max_size=frames_per_batch * 10),
     # sampler=SamplerWithoutReplacement(),
     sampler=PrioritizedSampler(10_000, 0.7, 0.5)
@@ -204,6 +204,7 @@ for i, tensordict_data in enumerate(collector):
             torch.nn.utils.clip_grad_norm_(loss_module.parameters(), max_grad_norm)
             optim.step()
             optim.zero_grad()
+            replay_buffer.update_tensordict_priority(subdata)
 
     logs["reward"].append(tensordict_data["next", "reward"].mean().item())
     pbar.update(tensordict_data.numel())

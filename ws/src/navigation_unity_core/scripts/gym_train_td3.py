@@ -7,7 +7,7 @@ from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn
 from torchrl.envs import InitTracker, TransformedEnv
 from torchrl.collectors import SyncDataCollector
-from torchrl.data.replay_buffers import ReplayBuffer
+from torchrl.data.replay_buffers import TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement, PrioritizedSampler
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
 from torchrl.envs import (
@@ -39,8 +39,8 @@ frames_per_batch = 1024
 total_frames = 1_000_000
 
 
-sub_batch_size = 512  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 1  # optimisation steps per batch of data collected
+sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
+num_epochs = 2  # optimisation steps per batch of data collected
 clip_epsilon = (
     # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
     0.3
@@ -132,7 +132,7 @@ collector = SyncDataCollector(
 )
 
 
-replay_buffer = ReplayBuffer(
+replay_buffer = TensorDictReplayBuffer(
     storage=LazyTensorStorage(max_size=10_000),
     sampler=PrioritizedSampler(10_000, 0.7, 0.5),
 )
@@ -191,6 +191,7 @@ for i, tensordict_data in enumerate(collector):
             # Optimization: backward, grad clipping and optimization step
             loss_actor = loss_out["loss_actor"]
             loss_q = loss_out["loss_qvalue"]
+
             loss_actor.backward()
             optimizer_actor.step()
             optimizer_actor.zero_grad()
@@ -198,6 +199,8 @@ for i, tensordict_data in enumerate(collector):
             loss_q.backward()
             optimizer_value.step()
             optimizer_value.zero_grad()
+
+            replay_buffer.update_tensordict_priority(subdata)
 
         target_net_updater.step()
 
