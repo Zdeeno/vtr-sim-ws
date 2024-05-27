@@ -14,6 +14,7 @@ RUN pip install torchrl
 RUN pip install tensordict
 RUN pip install scipy
 RUN pip install tqdm
+RUN pip install wandb
 
 RUN mkdir /app
 COPY . /app
