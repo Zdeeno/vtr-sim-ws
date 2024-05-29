@@ -365,7 +365,7 @@ class GymEnvironment(EnvBase):
 
         # TORCHRL specs
         self.batch_size = t.Size([1])
-        self.observation_spec = CompositeSpec({"observation": UnboundedContinuousTensorSpec(shape=t.Size([1, 721]),
+        self.observation_spec = CompositeSpec({"observation": UnboundedContinuousTensorSpec(shape=t.Size([1, 657]),
                                                                                             device=self.device)},
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.25, -0.5]], [[0.25, 0.5]], t.Size([1, 2]), self.device)},

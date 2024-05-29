@@ -84,7 +84,8 @@ def convergence():
                 for i in range(traj.shape[1]):
                     dist = np.sqrt((traj[0, i] - x)**2 + (traj[1, i] - y)**2)
                     dists.append(min(dist))
-                all_dists.append(dists)
+                if not np.any(np.array(dists) > 6.0):
+                    all_dists.append(dists)
 
         all_maps_dists.append(all_dists)
 
@@ -94,7 +95,7 @@ def convergence():
         curr_dists = all_maps_dists[j]
         cmap = plt.cm.get_cmap('coolwarm')
         for i, traj in enumerate(curr_dists):
-            clr = cmap(i / (len(curr_dists)))
+            clr = cmap(i / (len(curr_dists) - 1))
             plt.plot(curr_dists[i], color=clr, alpha=0.75, linewidth=2.0)
 
     plt.show()

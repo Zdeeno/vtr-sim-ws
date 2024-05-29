@@ -17,7 +17,22 @@ RUN pip install tqdm
 RUN pip install wandb
 
 RUN mkdir /app
+RUN mkdir ~/.ros
+RUN mkdir ~/.ros/trajectory_plots
+RUN mkdir ~/.ros/trajectory_plots_eval
+RUN mkdir ~/.ros/models
 COPY . /app
+
+COPY ~/.ros/sim1_vtr ~/.ros
+COPY ~/.ros/sim2_vtr ~/.ros
+COPY ~/.ros/sim3_vtr ~/.ros
+COPY ~/.ros/sim4_vtr ~/.ros
+COPY ~/.ros/sim5_vtr ~/.ros
+COPY ~/.ros/sim6_vtr ~/.ros
+COPY ~/.ros/sim7_vtr ~/.ros
+COPY ~/.ros/sim8_vtr ~/.ros
+COPY ~/.ros/sim9_vtr ~/.ros
+COPY ~/.ros/sim10_vtr ~/.ros
 
 WORKDIR /app/ws
 RUN catkin clean -y

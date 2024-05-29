@@ -1,0 +1,30 @@
+program: ws/src/navigation_unity_core/scripts/gym_train_td3.py
+name: sweep_td3
+method: bayes
+metric:
+  goal: maximize
+  name: eval_cum_reward
+parameters:
+  learning_rate_actor:
+    min: 0.000001
+    max: 0.0001
+  learning_rate_critic:
+    min: 0.000001
+    max: 0.0001
+  batch_size:
+    values: [16, 64, 256, 1024]
+  epochs:
+    min: 1
+    max: 8
+  gamma:
+    min: 0.9
+    max: 0.999
+  tau:
+    min: 0.001
+    max: 0.025
+  annealing:
+    min: 100
+    max: 1000
+  hidden_size:
+    min: 32
+    max: 1024

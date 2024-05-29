@@ -29,26 +29,43 @@ from nn_model import TD3ActorSimple, TD3ValueSimple
 import rospy
 import os
 
-PRETRAINED = False
-lr_actor = 1e-5
-lr_value = 1e-4
-max_grad_norm = 1.0
+USE_WANDB = True
 
+if USE_WANDB:
+    import wandb
+    wandb_run = wandb.init()
+
+
+PRETRAINED = False
+lr_actor = 1e-6
+lr_value = 1e-5
 frames_per_batch = 1024
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
-
-
 sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 2  # optimisation steps per batch of data collected
-clip_epsilon = (
-    # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
-    0.3
-)
-gamma = 0.998
+num_epochs = 1  # optimisation steps per batch of data collected
+gamma = 0.995
 lmbda = 0.95
 entropy_eps = 1e-1
-tau = 0.01
+tau = 0.003
+annealing = 300
+hidden_size = 512
+
+
+if USE_WANDB:
+    lr_actor = wandb.config.learning_rate_actor
+    lr_value = wandb.config.learning_rate_critic
+    frames_per_batch = 1024
+    # For a complete training, bring the number of frames up to 1M
+    total_frames = 1_000_000
+    sub_batch_size = wandb.config.batch_size  # cardinality of the sub-samples gathered from the current data in the inner loop
+    num_epochs = wandb.config.epochs  # optimisation steps per batch of data collected
+    gamma = wandb.config.gamma
+    entropy_eps = 1e-1
+    tau = wandb.config.tau
+    annealing = wandb.config.annealing
+    hidden_size = wandb.config.hidden_size
+
 
 HOME = os.path.expanduser('~')
 SAVE_DIR = HOME + "/.ros/models/"
@@ -86,13 +103,13 @@ env = TransformedEnv(
 
 print("------------ ENVIRONMENT CHECK DONE - INITIALIZING NETWORKS -------------")
 
-actor_net = TD3ActorSimple(2).float().to(device)
+actor_net = TD3ActorSimple(2, hidden_size=hidden_size).float().to(device)
 if PRETRAINED:
     actor_net.load_state_dict(torch.load(SAVE_DIR + "actor_net.pt"))
 
 policy_module = Actor(module=actor_net, in_keys=["observation"], out_keys=["action"]).to(device)
 
-value_net = TD3ValueSimple(2).float().to(device)
+value_net = TD3ValueSimple(2, hidden_size=hidden_size).float().to(device)
 if PRETRAINED:
     value_net.load_state_dict(torch.load(SAVE_DIR + "value_net.pt"))
 
@@ -114,7 +131,7 @@ value_module = ValueOperator(
 
 actor_model_explore = AdditiveGaussianWrapper(
     policy_module,
-    annealing_num_steps=1_000,
+    annealing_num_steps=annealing,
     mean=0.0,
     sigma_init=0.1,
     sigma_end=0.02,
@@ -227,6 +244,20 @@ for i, tensordict_data in enumerate(collector):
                 f"(init: {logs['eval reward (sum)'][0]: 4.4f}), "
                 f"eval step-count: {logs['eval step_count'][-1]}"
             )
+
+            if USE_WANDB:
+                wandb.log({
+                    "epoch": i,
+                    "train_avg_reward": tensordict_data["next", "reward"].mean().item(),
+                    "eval_avg_reward": eval_rollout["next", "reward"].mean().item(),
+                    "train_cum_reward": tensordict_data["next", "reward"].sum().item(),
+                    "eval_cum_reward": eval_rollout["next", "reward"].sum().item(),
+                    "train_std_turn": tensordict_data["action"][0].std(dim=0)[0].item(),
+                    "train_std_dist": tensordict_data["action"][0].std(dim=0)[1].item(),
+                    "train_avg_steps": tensordict_data["step_count"].float().mean().item(),
+                    "eval_avg_steps": eval_rollout["step_count"].float().mean().item()
+                })
+
             env.set_eval(False)
             del eval_rollout
 

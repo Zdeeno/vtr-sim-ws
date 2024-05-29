@@ -30,24 +30,44 @@ import rospy
 import os
 import tensordict
 
-PRETRAINED = True
-lr = 3e-6
-max_grad_norm = 1.0
 
-frames_per_batch = 1024
+USE_WANDB = True
+
+if USE_WANDB:
+    import wandb
+    wandb_run = wandb.init()
+
+
+PRETRAINED = False
+lr = 1e-5
+max_grad_norm = 1.0
+frames_per_batch = 32
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
-
-
-sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
+sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
 num_epochs = 2  # optimisation steps per batch of data collected
-clip_epsilon = (
-    # 0.2  # clip value for PPO loss: see the equation in the intro for more context.
-    0.3
-)
+clip_epsilon = (0.3)
 gamma = 0.95
 lmbda = 0.95
 entropy_eps = 1e-1
+loss_type = 0
+hidden_size = 512
+
+
+if USE_WANDB:
+    lr = wandb.config.learning_rate_actor
+    frames_per_batch = 1024
+    # For a complete training, bring the number of frames up to 1M
+    total_frames = 1_000_000
+    sub_batch_size = wandb.config.batch_size  # cardinality of the sub-samples gathered from the current data in the inner loop
+    num_epochs = wandb.config.epochs  # optimisation steps per batch of data collected
+    gamma = wandb.config.gamma
+    lmbda = wandb.config.lmbda
+    entropy_eps = 1e-1
+    clip_epsilon = wandb.config.clip
+    loss_type = wandb.config.loss
+    hidden_size = wandb.config.hidden_size
+
 
 HOME = os.path.expanduser('~')
 SAVE_DIR = HOME + "/.ros/models/"
@@ -85,7 +105,7 @@ env = TransformedEnv(
 
 print("------------ ENVIRONMENT CHECK DONE - INITIALIZING NETWORKS -------------")
 
-actor_net = PPOActorSimple(2).float().to(device)
+actor_net = PPOActorSimple(2, hidden_size=hidden_size).float().to(device)
 if PRETRAINED:
     actor_net.load_state_dict(torch.load(SAVE_DIR + "actor_net.pt"))
 
@@ -109,7 +129,7 @@ policy_module = ProbabilisticActor(
     # we'll need the log-prob for the numerator of the importance weights
 )
 
-value_net = PPOValueSimple(2).float().to(device)
+value_net = PPOValueSimple(2, hidden_size=hidden_size).float().to(device)
 if PRETRAINED:
     value_net.load_state_dict(torch.load(SAVE_DIR + "value_net.pt"))
 
@@ -145,26 +165,25 @@ advantage_module = GAE(
     gamma=gamma, lmbda=lmbda, value_network=value_module, average_gae=True
 )
 
-# loss_module = ClipPPOLoss(
-#     actor_network=policy_module,
-#     critic_network=value_module,
-#     clip_epsilon=clip_epsilon,
-#     entropy_bonus=True,
-#     entropy_coef=entropy_eps,
-#     # these keys match by default but we set this for completeness
-#     critic_coef=1.0,
-#     loss_critic_type="smooth_l1",
-# )
-
-loss_module = KLPENPPOLoss(
-    actor_network=policy_module,
-    critic_network=value_module,
-    entropy_bonus=True,
-    entropy_coef=entropy_eps,
-    # these keys match by default but we set this for completeness
-    critic_coef=1.0,
-    loss_critic_type="smooth_l1",
-)
+if loss_type == 0:
+    loss_module = ClipPPOLoss(
+        actor_network=policy_module,
+        critic_network=value_module,
+        clip_epsilon=clip_epsilon,
+        entropy_bonus=True,
+        entropy_coef=entropy_eps,
+        critic_coef=1.0,
+        loss_critic_type="smooth_l1",
+    )
+else:
+    loss_module = KLPENPPOLoss(
+        actor_network=policy_module,
+        critic_network=value_module,
+        entropy_bonus=True,
+        entropy_coef=entropy_eps,
+        critic_coef=1.0,
+        loss_critic_type="smooth_l1",
+    )
 
 
 optim = torch.optim.Adam(loss_module.parameters(), lr)
@@ -181,6 +200,7 @@ eval_str = ""
 # designed to collect:
 for i, tensordict_data in enumerate(collector):
     # we now have a batch of data to work with. Let's learn something from it.
+
     for _ in range(num_epochs):
         # We'll need an "advantage" signal to make PPO work.
         # We re-compute it at each epoch as its value depends on the value
@@ -215,6 +235,7 @@ for i, tensordict_data in enumerate(collector):
     stepcount_str = f"step count (max): {logs['step_count'][-1]}"
     logs["lr"].append(optim.param_groups[0]["lr"])
     lr_str = f"lr policy: {logs['lr'][-1]: 4.4f}"
+
     if i % 1 == 0:
         # We evaluate the policy once every 10 batches of data.
         # Evaluation is rather simple: execute the policy without exploration
@@ -236,6 +257,22 @@ for i, tensordict_data in enumerate(collector):
                 f"(init: {logs['eval reward (sum)'][0]: 4.4f}), "
                 f"eval step-count: {logs['eval step_count'][-1]}"
             )
+
+            if USE_WANDB:
+                wandb.log({
+                    "epoch": i,
+                    "train_avg_reward": tensordict_data["next", "reward"].mean().item(),
+                    "eval_avg_reward": eval_rollout["next", "reward"].mean().item(),
+                    "train_cum_reward": tensordict_data["next", "reward"].sum().item(),
+                    "eval_cum_reward": eval_rollout["next", "reward"].sum().item(),
+                    "train_avg_turn": tensordict_data["action"][0].mean(dim=0)[0].item(),
+                    "train_avg_dist": tensordict_data["action"][0].mean(dim=0)[1].item(),
+                    "train_std_turn": tensordict_data["action"][0].std(dim=0)[0].item(),
+                    "train_std_dist": tensordict_data["action"][0].std(dim=0)[1].item(),
+                    "train_avg_steps": tensordict_data["step_count"].float().mean().item(),
+                    "eval_avg_steps": eval_rollout["step_count"].float().mean().item()
+                })
+
             env.set_eval(False)
             del eval_rollout
     pbar.set_description(", ".join([eval_str, cum_reward_str, stepcount_str, lr_str]))
