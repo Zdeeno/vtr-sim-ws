@@ -17,6 +17,7 @@ tmux send-keys -t simulator:simulator "sim_build/hardnav_release_05_ROS1.x86_64"
 tmux send-keys -t simulator:ros_tcp "source ws/devel/setup.bash" Enter
 tmux send-keys -t simulator:ros_tcp "roscore" Enter
 tmux split-window -t simulator:ros_tcp
+tmux send-keys -t simulator:ros_tcp "source ws/devel/setup.bash" Enter
 tmux send-keys -t simulator:ros_tcp "sleep 2" Enter
 tmux send-keys -t simulator:ros_tcp "roslaunch navigation_unity_core core_nodes.launch --wait" Enter
 
