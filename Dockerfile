@@ -23,16 +23,16 @@ RUN mkdir ~/.ros/trajectory_plots_eval
 RUN mkdir ~/.ros/models
 COPY . /app
 
-COPY ~/.ros/sim1_vtr ~/.ros
-COPY ~/.ros/sim2_vtr ~/.ros
-COPY ~/.ros/sim3_vtr ~/.ros
-COPY ~/.ros/sim4_vtr ~/.ros
-COPY ~/.ros/sim5_vtr ~/.ros
-COPY ~/.ros/sim6_vtr ~/.ros
-COPY ~/.ros/sim7_vtr ~/.ros
-COPY ~/.ros/sim8_vtr ~/.ros
-COPY ~/.ros/sim9_vtr ~/.ros
-COPY ~/.ros/sim10_vtr ~/.ros
+COPY ./maps/sim1_vtr ~/.ros
+COPY ./maps/sim2_vtr ~/.ros
+COPY ./maps/sim3_vtr ~/.ros
+COPY ./maps/sim4_vtr ~/.ros
+COPY ./maps/sim5_vtr ~/.ros
+COPY ./maps/sim6_vtr ~/.ros
+COPY ./maps/sim7_vtr ~/.ros
+COPY ./maps/sim8_vtr ~/.ros
+COPY ./maps/sim9_vtr ~/.ros
+COPY ./maps/sim10_vtr ~/.ros
 
 WORKDIR /app/ws
 RUN catkin clean -y

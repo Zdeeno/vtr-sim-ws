@@ -52,3 +52,5 @@ CATKIN_IGNORE
 sim_build/*.so
 sim_build/*.x86_64
 sim_build/*_Data
+
+./maps
