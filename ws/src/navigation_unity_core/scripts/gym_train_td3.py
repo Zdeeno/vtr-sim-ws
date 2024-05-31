@@ -28,16 +28,8 @@ from gym_env import GymEnvironment
 from nn_model import TD3ActorSimple, TD3ValueSimple
 import rospy
 import os
-import argparse
 
-parser = argparse.ArgumentParser(
-                    prog='Agent training',
-                    description='PPO training')
-
-parser.add_argument('-w', '--wandb', default=False)
-args = parser.parse_args()
-
-USE_WANDB = args.wandb
+USE_WANDB = True
 
 if USE_WANDB:
     import wandb

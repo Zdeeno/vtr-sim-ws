@@ -29,17 +29,9 @@ from nn_model import PPOActorSimple, PPOValueSimple
 import rospy
 import os
 import tensordict
-import argparse
 
 
-parser = argparse.ArgumentParser(
-                    prog='Agent training',
-                    description='PPO training')
-
-parser.add_argument('-w', '--wandb', default=False)
-args = parser.parse_args()
-
-USE_WANDB = args.wandb
+USE_WANDB = True
 
 if USE_WANDB:
     import wandb

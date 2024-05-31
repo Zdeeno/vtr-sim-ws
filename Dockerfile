@@ -17,22 +17,22 @@ RUN pip install tqdm
 RUN pip install wandb
 
 RUN mkdir /app
-RUN mkdir ~/.ros
-RUN mkdir ~/.ros/trajectory_plots
-RUN mkdir ~/.ros/trajectory_plots_eval
-RUN mkdir ~/.ros/models
+RUN mkdir /root/.ros
+RUN mkdir /root/.ros/trajectory_plots
+RUN mkdir /root/.ros/trajectory_plots_eval
+RUN mkdir /root/.ros/models
 COPY . /app
 
-COPY ./maps/sim1_vtr ~/.ros
-COPY ./maps/sim2_vtr ~/.ros
-COPY ./maps/sim3_vtr ~/.ros
-COPY ./maps/sim4_vtr ~/.ros
-COPY ./maps/sim5_vtr ~/.ros
-COPY ./maps/sim6_vtr ~/.ros
-COPY ./maps/sim7_vtr ~/.ros
-COPY ./maps/sim8_vtr ~/.ros
-COPY ./maps/sim9_vtr ~/.ros
-COPY ./maps/sim10_vtr ~/.ros
+COPY ./maps/sim1_vtr /root/.ros/sim1_vtr
+COPY ./maps/sim2_vtr /root/.ros/sim2_vtr
+COPY ./maps/sim3_vtr /root/.ros/sim3_vtr
+COPY ./maps/sim4_vtr /root/.ros/sim4_vtr
+COPY ./maps/sim5_vtr /root/.ros/sim5_vtr
+COPY ./maps/sim6_vtr /root/.ros/sim6_vtr
+COPY ./maps/sim7_vtr /root/.ros/sim7_vtr
+COPY ./maps/sim8_vtr /root/.ros/sim8_vtr
+COPY ./maps/sim9_vtr /root/.ros/sim9_vtr
+COPY ./maps/sim10_vtr /root/.ros/sim10_vtr
 
 WORKDIR /app/ws
 RUN catkin clean -y
