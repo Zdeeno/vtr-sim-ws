@@ -36,7 +36,6 @@ COPY ./maps/sim10_vtr /root/.ros/sim10_vtr
 
 RUN echo 'export ROS_HOSTNAME="localhost"' >> /root/.bashrc
 RUN echo 'export ROS_MASTER_URI="http://localhost:11311"' >> /root/.bashrc
-RUN echo 'export XAUTHORITY="/root/.Xauthority"' >> /root/.bashrc
 
 WORKDIR /app/ws
 RUN catkin clean -y
