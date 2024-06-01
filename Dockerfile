@@ -34,6 +34,10 @@ COPY ./maps/sim8_vtr /root/.ros/sim8_vtr
 COPY ./maps/sim9_vtr /root/.ros/sim9_vtr
 COPY ./maps/sim10_vtr /root/.ros/sim10_vtr
 
+RUN echo 'export ROS_HOSTNAME="localhost"' >> /root/.bashrc
+RUN echo 'export ROS_MASTER_URI="http://localhost:11311"' >> /root/.bashrc
+RUN echo 'export XAUTHORITY="/root/.Xauthority"' >> /root/.bashrc
+
 WORKDIR /app/ws
 RUN catkin clean -y
 RUN source /opt/ros/noetic/setup.bash && catkin b
