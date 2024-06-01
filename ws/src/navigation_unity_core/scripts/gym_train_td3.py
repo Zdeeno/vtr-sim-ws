@@ -229,37 +229,47 @@ for i, tensordict_data in enumerate(collector):
         # number of steps (1000, which is our ``env`` horizon).
         # The ``rollout`` method of the ``env`` can take a policy as argument:
         # it will then execute this policy at each step.
-        with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
-            # execute a rollout with the trained policy
-            env.set_eval(True)
-            eval_rollout = env.rollout(1000, policy_module)
-            logs["eval reward"].append(eval_rollout["next", "reward"].mean().item())
-            logs["eval reward (sum)"].append(
-                eval_rollout["next", "reward"].sum().item()
-            )
-            logs["eval step_count"].append(eval_rollout["step_count"].max().item())
-            eval_str = (
-                f"eval cumulative reward: {logs['eval reward (sum)'][-1]: 4.4f} "
-                f"(init: {logs['eval reward (sum)'][0]: 4.4f}), "
-                f"eval step-count: {logs['eval step_count'][-1]}"
-            )
+        eval_avg_rwrd = 0.0
+        eval_cum_rwrd = 0.0
+        eval_steps = 0.0
+        eval_num = 3
+        for eval_it in range(eval_num):
+            with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
+                # execute a rollout with the trained policy
+                env.set_eval(True)
+                eval_rollout = env.rollout(1000, policy_module)
+                logs["eval reward"].append(eval_rollout["next", "reward"].mean().item())
+                logs["eval reward (sum)"].append(
+                    eval_rollout["next", "reward"].sum().item()
+                )
+                logs["eval step_count"].append(eval_rollout["step_count"].max().item())
+                eval_str = (
+                    f"eval cumulative reward: {logs['eval reward (sum)'][-1]: 4.4f} "
+                    f"(init: {logs['eval reward (sum)'][0]: 4.4f}), "
+                    f"eval step-count: {logs['eval step_count'][-1]}"
+                )
 
-            if USE_WANDB:
-                wandb.log({
-                    "epoch": i,
-                    "train_avg_reward": tensordict_data["next", "reward"].mean().item(),
-                    "eval_avg_reward": eval_rollout["next", "reward"].mean().item(),
-                    "train_cum_reward": tensordict_data["next", "reward"].sum().item(),
-                    "eval_cum_reward": eval_rollout["next", "reward"].sum().item(),
-                    "train_std_turn": tensordict_data["action"][0].std(dim=0)[0].item(),
-                    "train_std_dist": tensordict_data["action"][0].std(dim=0)[1].item(),
-                    "train_avg_steps": tensordict_data["step_count"].float().mean().item(),
-                    "eval_avg_steps": eval_rollout["step_count"].float().mean().item()
-                })
+                eval_avg_rwrd += eval_rollout["next", "reward"].mean().item()
+                eval_cum_rwrd += eval_rollout["next", "reward"].sum().item()
+                eval_steps += eval_rollout["step_count"].float().mean().item()
 
-            env.set_eval(False)
-            del eval_rollout
+                env.set_eval(False)
+                del eval_rollout
 
+        if USE_WANDB:
+            wandb.log({
+                "epoch": i,
+                "train_avg_reward": tensordict_data["next", "reward"].mean().item(),
+                "eval_avg_reward": eval_avg_rwrd/eval_num,
+                "train_cum_reward": tensordict_data["next", "reward"].sum().item(),
+                "eval_cum_reward": eval_cum_rwrd/eval_num,
+                "train_avg_turn": tensordict_data["action"][0].mean(dim=0)[0].item(),
+                "train_avg_dist": tensordict_data["action"][0].mean(dim=0)[1].item(),
+                "train_std_turn": tensordict_data["action"][0].std(dim=0)[0].item(),
+                "train_std_dist": tensordict_data["action"][0].std(dim=0)[1].item(),
+                "train_avg_steps": tensordict_data["step_count"].float().mean().item(),
+                "eval_avg_steps": eval_steps/eval_num
+            })
 
     logs["reward"].append(tensordict_data["next", "reward"].mean().item())
     pbar.update(tensordict_data.numel())
