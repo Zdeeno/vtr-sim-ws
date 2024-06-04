@@ -145,6 +145,8 @@ collector = SyncDataCollector(
     total_frames=total_frames,
     split_trajs=False,
     device=device,
+    reset_when_done=True,
+    reset_at_each_iter=True
 )
 
 

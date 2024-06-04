@@ -39,18 +39,18 @@ if USE_WANDB:
 
 
 PRETRAINED = False
-lr = 1e-5
+lr = 5e-7
 max_grad_norm = 1.0
-frames_per_batch = 32
+frames_per_batch = 1024
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
-sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
+sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
 num_epochs = 2  # optimisation steps per batch of data collected
 clip_epsilon = (0.3)
-gamma = 0.95
+gamma = 0.99
 lmbda = 0.95
 entropy_eps = 1e-1
-loss_type = 0
+loss_type = 1
 hidden_size = 512
 
 
@@ -150,6 +150,8 @@ collector = SyncDataCollector(
     total_frames=total_frames,
     split_trajs=False,
     device=device,
+    reset_when_done=True,
+    reset_at_each_iter=True,
     # exploration_type=ExplorationType.MEAN,
 )
 

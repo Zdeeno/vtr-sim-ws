@@ -345,6 +345,8 @@ class PPOActorSimple(t.nn.Module):
                                   t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, hidden_size),
                                   t.nn.Tanh(),
+                                  t.nn.Linear(hidden_size, hidden_size),
+                                  t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, 4))
 
         self.norm = NormalParamExtractor()
@@ -378,6 +380,8 @@ class TD3ActorSimple(t.nn.Module):
                                   t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, hidden_size),
                                   t.nn.Tanh(),
+                                  t.nn.Linear(hidden_size, hidden_size),
+                                  t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, 2))
 
     def pass_network(self, x):
@@ -408,6 +412,8 @@ class PPOValueSimple(t.nn.Module):
                                   t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, hidden_size),
                                   t.nn.Tanh(),
+                                  t.nn.Linear(hidden_size, hidden_size),
+                                  t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, 1))
 
     def pass_network(self, x):
@@ -434,6 +440,8 @@ class TD3ValueSimple(t.nn.Module):
 
         # histograms from visual data (1, 2, 5)
         self.ff = t.nn.Sequential(t.nn.Linear(self.hist_size * 9 + self.dist_hist_size + 2, hidden_size),
+                                  t.nn.Tanh(),
+                                  t.nn.Linear(hidden_size, hidden_size),
                                   t.nn.Tanh(),
                                   t.nn.Linear(hidden_size, hidden_size),
                                   t.nn.Tanh(),
