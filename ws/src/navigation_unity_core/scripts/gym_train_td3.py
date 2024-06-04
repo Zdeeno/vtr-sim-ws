@@ -29,7 +29,7 @@ from nn_model import TD3ActorSimple, TD3ValueSimple
 import rospy
 import os
 
-USE_WANDB = False
+USE_WANDB = True
 
 if USE_WANDB:
     import wandb

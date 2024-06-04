@@ -31,7 +31,7 @@ import os
 import tensordict
 
 
-USE_WANDB = False
+USE_WANDB = True
 
 if USE_WANDB:
     import wandb
