@@ -194,6 +194,9 @@ class VTREnv(BaseInformed):
         self.target_action = None
         self.est_dist = None
         self.last_obs = None
+        self.last_dist_err = None
+        self.last_lat_err = None
+        self.dist_err = None
 
     def render(self, mode='human'):
         pass
@@ -207,6 +210,8 @@ class VTREnv(BaseInformed):
         obs, failure = self.get_observation()
 
         reward = self.curr_reward
+        self.last_lat_err = self.displacement
+        self.last_dist_err = self.dist_err
         self.last_curr_dist = self.curr_dist
 
         # CHECK FINISH
@@ -274,6 +279,9 @@ class VTREnv(BaseInformed):
         self.curr_reward = 0.0
         self.finished = False
         self.last_obs = None
+        self.last_dist_err = None
+        self.last_lat_err = None
+        self.dist_err = None
 
     def fetch_map(self, name):
         self.processing.load_map(name)
@@ -325,7 +333,7 @@ class VTREnv(BaseInformed):
         img_dist_idxs = np.round((self.est_dist - img_dists) * 10)
         for index_diff in img_dist_idxs[0]:
             if abs(index_diff) < center:
-                imgs_pos[int(index_diff) + center] = 1
+                imgs_pos[int(index_diff) + center] = 0.2
 
         return imgs_pos
 
@@ -339,9 +347,15 @@ class VTREnv(BaseInformed):
             _ = super().get_control_command(msg)
             self.process_odom()
             self.processing.pubSensorsInput(self.est_dist)
-            dist_err = self.curr_dist - self.est_dist
+            self.dist_err = self.curr_dist - self.est_dist
+            if self.last_lat_err is None:
+                self.last_lat_err = self.displacement
+            if self.last_dist_err is None:
+                self.last_dist_err = self.dist_err
             covered_dist = self.curr_dist - self.last_curr_dist
-            self.curr_reward = 10.0 + covered_dist - abs(self.displacement) - abs(dist_err)
+            self.curr_reward = covered_dist \
+                               - (self.dist_err - self.last_dist_err) \
+                               - (self.displacement - self.last_lat_err)
 
 
 class GymEnvironment(EnvBase):

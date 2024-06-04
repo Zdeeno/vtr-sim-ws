@@ -31,7 +31,7 @@ import os
 import tensordict
 
 
-USE_WANDB = True
+USE_WANDB = False
 
 if USE_WANDB:
     import wandb
@@ -39,18 +39,18 @@ if USE_WANDB:
 
 
 PRETRAINED = False
-lr = 5e-7
+lr = 1e-5
 max_grad_norm = 1.0
-frames_per_batch = 1024
+frames_per_batch = 512
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
-sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 2  # optimisation steps per batch of data collected
+sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
+num_epochs = 8  # optimisation steps per batch of data collected
 clip_epsilon = (0.3)
 gamma = 0.99
 lmbda = 0.95
-entropy_eps = 1e-1
-loss_type = 1
+entropy_eps = 1e-2
+loss_type = 0
 hidden_size = 512
 
 
@@ -164,7 +164,10 @@ replay_buffer = TensorDictReplayBuffer(
 
 
 advantage_module = GAE(
-    gamma=gamma, lmbda=lmbda, value_network=value_module, average_gae=True
+    gamma=gamma,
+    lmbda=lmbda,
+    value_network=value_module,
+    # average_gae=True
 )
 
 if loss_type == 0:

@@ -29,7 +29,7 @@ from nn_model import TD3ActorSimple, TD3ValueSimple
 import rospy
 import os
 
-USE_WANDB = True
+USE_WANDB = False
 
 if USE_WANDB:
     import wandb
@@ -41,11 +41,10 @@ lr_value = 1e-5
 frames_per_batch = 1024
 # For a complete training, bring the number of frames up to 1M
 total_frames = 1_000_000
-sub_batch_size = 256  # cardinality of the sub-samples gathered from the current data in the inner loop
-num_epochs = 1  # optimisation steps per batch of data collected
+sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
+num_epochs = 16  # optimisation steps per batch of data collected
 gamma = 0.995
 lmbda = 0.95
-entropy_eps = 1e-1
 tau = 0.003
 annealing = 300
 hidden_size = 512
@@ -196,30 +195,31 @@ eval_str = ""
 # with set_exploration_type(ExplorationType.MEAN):
 for i, tensordict_data in enumerate(collector):
     # we now have a batch of data to work with. Let's learn something from it.
+
+    # We'll need an "advantage" signal to make PPO work.
+    # We re-compute it at each epoch as its value depends on the value
+    # network which is updated in the inner loop.
+    data_view = tensordict_data.reshape(-1)
+    replay_buffer.extend(data_view)
+
     for _ in range(num_epochs):
-        # We'll need an "advantage" signal to make PPO work.
-        # We re-compute it at each epoch as its value depends on the value
-        # network which is updated in the inner loop.
-        data_view = tensordict_data.reshape(-1)
-        replay_buffer.extend(data_view)
-        for _ in range(frames_per_batch // sub_batch_size):
-            subdata = replay_buffer.sample(sub_batch_size)
-            loss_out = loss_module(subdata.to(device))
 
-            # Optimization: backward, grad clipping and optimization step
-            loss_actor = loss_out["loss_actor"]
-            loss_q = loss_out["loss_qvalue"]
+        subdata = replay_buffer.sample(sub_batch_size)
+        loss_out = loss_module(subdata.to(device))
 
-            loss_actor.backward()
-            optimizer_actor.step()
-            optimizer_actor.zero_grad()
+        # Optimization: backward, grad clipping and optimization step
+        loss_actor = loss_out["loss_actor"]
+        loss_q = loss_out["loss_qvalue"]
 
-            loss_q.backward()
-            optimizer_value.step()
-            optimizer_value.zero_grad()
+        loss_actor.backward()
+        optimizer_actor.step()
+        optimizer_actor.zero_grad()
 
-            replay_buffer.update_tensordict_priority(subdata)
+        loss_q.backward()
+        optimizer_value.step()
+        optimizer_value.zero_grad()
 
+        replay_buffer.update_tensordict_priority(subdata)
         target_net_updater.step()
 
     actor_model_explore.step(i)
