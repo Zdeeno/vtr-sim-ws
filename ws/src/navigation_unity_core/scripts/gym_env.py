@@ -204,6 +204,10 @@ class VTREnv(BaseInformed):
 
     def step(self, action):
         # CONTROL THE ROBOT
+        if self.last_curr_dist is not None:
+            while self.curr_dist - self.last_curr_dist < self.min_step_dist:
+                rospy.sleep(0.01)
+
         if self.repeating:
             self.control_robot(action)
 
@@ -347,17 +351,16 @@ class VTREnv(BaseInformed):
                 return
             _ = super().get_control_command(msg)
             self.process_odom()
-            if self.last_curr_dist is None or self.curr_dist - self.last_curr_dist > self.min_step_dist:
-                self.processing.pubSensorsInput(self.est_dist)
-                self.dist_err = abs(self.curr_dist - self.est_dist)
-                if self.last_lat_err is None:
-                    self.last_lat_err = self.displacement
-                if self.last_dist_err is None:
-                    self.last_dist_err = self.dist_err
-                covered_dist = self.curr_dist - self.last_curr_dist
-                self.curr_reward = covered_dist \
-                                   - (self.dist_err - self.last_dist_err) \
-                                   - (self.displacement - self.last_lat_err)
+            self.processing.pubSensorsInput(self.est_dist)
+            self.dist_err = abs(self.curr_dist - self.est_dist)
+            if self.last_lat_err is None:
+                self.last_lat_err = self.displacement
+            if self.last_dist_err is None:
+                self.last_dist_err = self.dist_err
+            covered_dist = self.curr_dist - self.last_curr_dist
+            self.curr_reward = covered_dist \
+                               - (self.dist_err - self.last_dist_err) \
+                               - (self.displacement - self.last_lat_err)
 
 
 class GymEnvironment(EnvBase):
