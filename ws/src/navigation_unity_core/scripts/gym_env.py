@@ -176,7 +176,7 @@ class VTREnv(BaseInformed):
         self.max_dist_err = 3.0
         self.max_history = 1
         self.dist_span = 8
-        self.min_step_dist = 0.15
+        self.min_step_dist = 0.2
         self.last_pos_hist = None
         self.finished = False
 
