@@ -255,9 +255,9 @@ class VTREnv(BaseInformed):
             data = self.observation_buffer.get_live_data()
             if data is None:
                 rospy.logwarn("WAITING FOR NEW DATA!")
-                rospy.sleep(0.05)
+                rospy.sleep(0.01)
             counter += 1
-            if counter >= 10 and self.last_obs is not None:
+            if counter >= 20 and self.last_obs is not None:
                 rospy.logwarn("UNABLE TO OBTAIN NEW DATA - FAILURE!")
                 return self.last_obs, True
         img_data = self.parse_hists(data[1:])
@@ -347,7 +347,7 @@ class VTREnv(BaseInformed):
             _ = super().get_control_command(msg)
             self.process_odom()
             self.processing.pubSensorsInput(self.est_dist)
-            self.dist_err = self.curr_dist - self.est_dist
+            self.dist_err = abs(self.curr_dist - self.est_dist)
             if self.last_lat_err is None:
                 self.last_lat_err = self.displacement
             if self.last_dist_err is None:
