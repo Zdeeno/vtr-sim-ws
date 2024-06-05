@@ -205,8 +205,12 @@ class VTREnv(BaseInformed):
     def step(self, action):
         # CONTROL THE ROBOT
         if self.last_curr_dist is not None:
+            counter = 1
             while self.curr_dist - self.last_curr_dist < self.min_step_dist:
                 rospy.sleep(0.01)
+                counter += 1
+                if counter > 100:
+                    break
 
         if self.repeating:
             self.control_robot(action)
