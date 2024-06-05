@@ -176,6 +176,7 @@ class VTREnv(BaseInformed):
         self.max_dist_err = 3.0
         self.max_history = 1
         self.dist_span = 8
+        self.min_step_dist = 0.15
         self.last_pos_hist = None
         self.finished = False
 
@@ -257,7 +258,7 @@ class VTREnv(BaseInformed):
                 rospy.logwarn("WAITING FOR NEW DATA!")
                 rospy.sleep(0.01)
             counter += 1
-            if counter >= 20 and self.last_obs is not None:
+            if counter >= 100 and self.last_obs is not None:
                 rospy.logwarn("UNABLE TO OBTAIN NEW DATA - FAILURE!")
                 return self.last_obs, True
         img_data = self.parse_hists(data[1:])
@@ -346,16 +347,17 @@ class VTREnv(BaseInformed):
                 return
             _ = super().get_control_command(msg)
             self.process_odom()
-            self.processing.pubSensorsInput(self.est_dist)
-            self.dist_err = abs(self.curr_dist - self.est_dist)
-            if self.last_lat_err is None:
-                self.last_lat_err = self.displacement
-            if self.last_dist_err is None:
-                self.last_dist_err = self.dist_err
-            covered_dist = self.curr_dist - self.last_curr_dist
-            self.curr_reward = covered_dist \
-                               - (self.dist_err - self.last_dist_err) \
-                               - (self.displacement - self.last_lat_err)
+            if self.last_curr_dist is None or self.curr_dist - self.last_curr_dist > self.min_step_dist:
+                self.processing.pubSensorsInput(self.est_dist)
+                self.dist_err = abs(self.curr_dist - self.est_dist)
+                if self.last_lat_err is None:
+                    self.last_lat_err = self.displacement
+                if self.last_dist_err is None:
+                    self.last_dist_err = self.dist_err
+                covered_dist = self.curr_dist - self.last_curr_dist
+                self.curr_reward = covered_dist \
+                                   - (self.dist_err - self.last_dist_err) \
+                                   - (self.displacement - self.last_lat_err)
 
 
 class GymEnvironment(EnvBase):
