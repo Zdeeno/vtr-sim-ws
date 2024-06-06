@@ -33,14 +33,24 @@ USE_WANDB = True
 
 if USE_WANDB:
     import wandb
-    wandb_run = wandb.init()
+    wandb_run = wandb.init(project="RLVTR",
+                           config={
+                               "learning_rate_actor": 1e-6,
+                               "learning_rate_critic": 1e-5,
+                               "batch_size": 512,
+                               "epochs": 4,
+                               "gamma": 0.99,
+                               "hidden_size": 1024,
+                               "tau": 0.001,
+                               "annealing": 1000,
+                           })
 
 PRETRAINED = False
 lr_actor = 1e-6
 lr_value = 1e-5
 frames_per_batch = 1024
 # For a complete training, bring the number of frames up to 1M
-total_frames = 1_000_000
+total_frames = 4_000_000
 sub_batch_size = 32  # cardinality of the sub-samples gathered from the current data in the inner loop
 num_epochs = 16  # optimisation steps per batch of data collected
 gamma = 0.995
