@@ -35,11 +35,21 @@ USE_WANDB = True
 
 if USE_WANDB:
     import wandb
-    wandb_run = wandb.init()
+    wandb_run = wandb.init(project="RLVTR",
+                           config={
+                               "learning_rate_actor":3e-6,
+                               "batch_size":32,
+                               "epochs":8,
+                               "gamma":0.99,
+                               "lmbda":0.95,
+                               "clip":0.3,
+                               "loss":0,
+                               "hidden_size":1024
+                           })
 
 
 PRETRAINED = False
-lr = 1e-5
+lr = 5e-6
 max_grad_norm = 1.0
 frames_per_batch = 512
 # For a complete training, bring the number of frames up to 1M
