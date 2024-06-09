@@ -239,6 +239,7 @@ class VTREnv(BaseInformed):
             rospy.logwarn("!!!TRAVERSAL FAILED - INVALID DISTANCE ESTIMATE!!!")
             self.finished = True
             self.repeating = False
+            reward = -self.max_dist_err
             self.control_pub.publish(Twist())
 
 
