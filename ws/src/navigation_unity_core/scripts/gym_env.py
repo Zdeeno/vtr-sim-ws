@@ -241,6 +241,7 @@ class VTREnv(BaseInformed):
             self.repeating = False
             self.control_pub.publish(Twist())
 
+
         rospy.logwarn("REWARD: " + str(reward))
         return obs, reward, self.finished, False
 
@@ -364,7 +365,7 @@ class VTREnv(BaseInformed):
             covered_dist = self.curr_dist - self.last_curr_dist
             self.curr_reward = covered_dist \
                                - (self.dist_err - self.last_dist_err) \
-                               - (self.displacement - self.last_lat_err)
+                               - (abs(self.displacement) - abs(self.last_lat_err))
 
 
 class GymEnvironment(EnvBase):
@@ -393,7 +394,7 @@ class GymEnvironment(EnvBase):
                                               shape=t.Size([1]))
         self.action_spec = CompositeSpec({"action": BoundedTensorSpec([[-0.25, -0.5]], [[0.25, 0.5]], t.Size([1, 2]), self.device)},
                                          shape=t.Size([1]))
-        self.reward_spec = BoundedTensorSpec(-7.0, 5.0, t.Size([1, 1]), self.device)
+        self.reward_spec = BoundedTensorSpec(-3.0, 3.0, t.Size([1, 1]), self.device)
         self.done_spec = BinaryDiscreteTensorSpec(1, shape=t.Size([1, 1]), dtype=t.bool)
 
     def round_setup(self, day_time=None, scene=None, random_teleport=None):
@@ -411,6 +412,7 @@ class GymEnvironment(EnvBase):
         self.sim.plt_robot()
         failure = self.sim.failure_check()
         if failure:
+            reward = -3.0
             rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
             self.finished = True
             failure = True
@@ -419,7 +421,7 @@ class GymEnvironment(EnvBase):
             self.sim.plt_robot(save_fig=True, idx=self.traversal_idx, eval=self.eval)
             if not failure:
                 self.sim.traversal_summary()
-        reward = max(reward, -7.0)
+        reward = max(min(reward, 3.0), -3)
         # rospy.logwarn("observation: " + str(obs.shape) + ", has inf: " + str(t.any(t.isinf(obs))))
         return TensorDict({"observation": obs.unsqueeze(0),
                            "reward": t.tensor([reward], device=self.device).unsqueeze(0).float(),
