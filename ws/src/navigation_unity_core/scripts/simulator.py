@@ -11,7 +11,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 import matplotlib.pyplot as plt
 import copy
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from vtr import PFVTR, InformedVTR, NeuralNet2
+from vtr import PFVTR, InformedVTR, NeuralNet2, RLAgent
 from navigation_unity_msgs.srv import ResetWorld, ResetWorldRequest, ResetWorldResponse
 from world_generator import WorldGenerator
 import yaml
@@ -392,10 +392,10 @@ if __name__ == '__main__':
     # vtr = InformedVTR()
 
     # PFVTR policy
-    # vtr = PFVTR(image_pub=1)
+    # vtr = PFVTR(image_pub=2)
 
     # Neural network controller
-    vtr = NeuralNet2(training=True)
+    vtr = RLAgent()
 
     sim = Environment(simulator, vtr)
     day_time = 0.0  # daylight between 0.21 to 0.95

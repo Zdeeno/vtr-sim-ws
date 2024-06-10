@@ -247,14 +247,14 @@ class VTREnv(BaseInformed):
         return obs, reward, self.finished, False
 
     def control_robot(self, action):
-        nearest_z = self.get_nearest_command(self.est_dist)
+        self.est_dist -= action[1].cpu().detach().numpy()
+        nearest_z, nearest_x = self.get_nearest_command(self.est_dist)
         rospy.logwarn("Controlling robot with action: " + str(nearest_z) + " and correction " + str(action))
 
         control_command = Twist()
-        control_command.linear.x = 2.0
+        control_command.linear.x = nearest_x
         control_command.angular.z = action[0].cpu() + nearest_z
 
-        self.est_dist -= action[1].cpu().numpy()
         self.control_pub.publish(control_command)
 
     def get_observation(self):
@@ -322,8 +322,10 @@ class VTREnv(BaseInformed):
         dists = np.abs(dist - self.dists)
         nearest_idx = np.argmin(dists)
         target_z = self.actions[nearest_idx].angular.z
+        target_x = self.actions[nearest_idx].linear.x
+
         rospy.logwarn("Fetched command: " + str(dist) + ", " + str(target_z))
-        return target_z
+        return target_z, target_x
 
     def process_odom(self):
         if self.last_x is not None:
