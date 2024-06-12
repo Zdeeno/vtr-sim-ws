@@ -367,8 +367,8 @@ class VTREnv(BaseInformed):
                 self.last_dist_err = self.dist_err
             covered_dist = self.curr_dist - self.last_curr_dist
             self.curr_reward = covered_dist \
-                               - (self.dist_err - self.last_dist_err) \
-                               - (abs(self.displacement) - abs(self.last_lat_err))
+                               - 2.0 * (self.dist_err - self.last_dist_err) \
+                               - 2.0 * (abs(self.displacement) - abs(self.last_lat_err))
 
 
 class GymEnvironment(EnvBase):
