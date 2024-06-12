@@ -639,7 +639,7 @@ class RLAgent(InformedVTR):
         self.max_dist_err = 3.0
         self.max_history = 1
         self.dist_span = 8
-        self.min_step_dist = 0.1
+        self.min_step_dist = 0.2
         self.last_pos_hist = None
         self.finished = True
         self.end_dist = None
@@ -690,6 +690,7 @@ class RLAgent(InformedVTR):
         self.last_dist_err = None
         self.last_lat_err = None
         self.dist_err = None
+        self.last_dist = None
 
     def repeat_map(self, start=float, end=float, map_name=str):
         self.processing.load_map(map_name)
@@ -749,6 +750,7 @@ class RLAgent(InformedVTR):
         self.dist_err = None
         self.end_dist = None
         self.finished = True
+        self.last_dist = None
 
 
     def resize_histogram(self, x):
@@ -825,4 +827,9 @@ class RLAgent(InformedVTR):
                        batch_size=[1])
             with set_exploration_type(ExplorationType.MEAN), t.no_grad():
                 action = self.policy_module.forward(net_in)
-            self.control_robot(action["action"][0])
+
+            if self.est_dist > self.last_dist + self.min_step_dist or self.last_dist is None:
+                self.control_robot(action["action"][0])
+                self.last_dist = self.est_dist
+            else:
+                rospy.logwarn("Waiting for action ...")
