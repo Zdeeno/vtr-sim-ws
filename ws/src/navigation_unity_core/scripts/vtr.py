@@ -828,7 +828,7 @@ class RLAgent(InformedVTR):
             with set_exploration_type(ExplorationType.MEAN), t.no_grad():
                 action = self.policy_module.forward(net_in)
 
-            if self.est_dist > self.last_dist + self.min_step_dist or self.last_dist is None:
+            if self.last_dist is None or self.est_dist > self.last_dist + self.min_step_dist:
                 self.control_robot(action["action"][0])
                 self.last_dist = self.est_dist
             else:
