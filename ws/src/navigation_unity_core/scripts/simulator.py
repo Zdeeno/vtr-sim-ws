@@ -264,7 +264,7 @@ class Simulator:
         vtr.repeat_map(start_pos, end_pos, map_name)
         return
 
-    def traversal_summary(self):
+    def traversal_summary(self, save=False, idx=None):
         # TODO: use class variables which have precalculated trajectory
         odom_pos = copy.copy(self.maps[self.curr_map_idx].odoms[-1])
         last_x, last_y = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
@@ -278,6 +278,13 @@ class Simulator:
                       "Final displacement distance/rotation " + str(final_displacement) + "/" + str(
             last_phi_err) + "\n" +
                       "Final Chamfer dist: " + str(self._chamfer_dist()) + "\n---------------------------")
+        if save:
+            save_path = HOME + "/.ros/trajectory_plots/" + str(idx)
+            trajectory_print = np.array([self.init_displacement[0], self.init_displacement[1],
+                                         self.init_rot_error, final_displacement[0], final_displacement[1],
+                                         last_phi_err, self._chamfer_dist()])
+            np.savetxt(save_path + "_" + str(self.curr_map_idx) + "_stats.csv", trajectory_print, delimiter=",")
+
 
     def smallest_angle_diff(self, angle1, angle2):
         diff = angle2 - angle1
@@ -370,7 +377,7 @@ class Environment:
         if self.failure:
             rospy.logwarn("!!! UNSUCCESSFUL TRAVERSAL !!!")
         else:
-            self.sim.traversal_summary()
+            self.sim.traversal_summary(save=True, idx=self.traversal_idx)
         self.vtr.reset()
         self.sim.plt_robot(save_fig=True, idx=self.traversal_idx)
         self.sim.control_pub.publish(Twist())  # stop robot movement traversing
