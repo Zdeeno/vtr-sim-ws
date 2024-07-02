@@ -362,6 +362,38 @@ class PPOActorSimple(t.nn.Module):
         return normed_out
 
 
+class PPOActorLSTM(t.nn.Module):
+
+    def __init__(self, lookaround: int, dist_window=8, hidden_size=512):
+        super().__init__()
+        self.lookaround = lookaround
+        self.map_obs_size = lookaround * 2 + 1
+        map_trans_size = lookaround * 2
+        total_size = self.map_obs_size + map_trans_size + 1  # + 1 for last camera img vs current
+        self.hist_size = 64
+        input_size = total_size * self.hist_size
+        self.dist_hist_size = dist_window * 10 + 1
+        input_size += self.dist_hist_size * 2
+
+        # histograms from visual data (1, 2, 5)
+        self.ff = t.nn.LSTM(self.hist_size * 9 + self.dist_hist_size, 128, 4, batch_first=True)
+        self.lin = t.nn.Linear(128, 4)
+
+        self.norm = NormalParamExtractor()
+
+
+    def pass_network(self, x):
+        out, (hs, vs) = self.ff(x)
+        out = self.lin(out)
+        print(out)
+        return out
+
+    def forward(self, x):
+        normed_out = self.norm(self.pass_network(x))
+        print(normed_out)
+        return normed_out
+
+
 class TD3ActorSimple(t.nn.Module):
 
     def __init__(self, lookaround: int, dist_window=8, hidden_size=512):
