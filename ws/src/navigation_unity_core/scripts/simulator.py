@@ -143,7 +143,7 @@ class Simulator:
         self.world_generator = WorldGenerator(service=self.reset_world, world_path=self.world_path, scenes=scenes)
         self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback, queue_size=1)
 
-    def reset_sim(self, day_time=None, scene=None, teleport=None):
+    def reset_sim(self, day_time=None, scene=None, teleport=None, displacement=None, force_map_idx=None):
         # clear variables
         self.trav_x = []
         self.trav_y = []
@@ -163,11 +163,11 @@ class Simulator:
                 day_progress_speed) + " and fog " + str(fog_density) + " and spawn point " + str(spawn_point))
             # TODO: BEWARE THIS must be fixed
             new_map_idx = np.random.randint(len(self.maps))
-
         else:
             scene = self.world_generator.randomly_change_world()
             new_map_idx = np.random.randint(len(self.maps))
-
+        if force_map_idx is not None:
+            new_map_idx = force_map_idx
         self.curr_map_idx = new_map_idx
 
         # plot map and teleport the robot
@@ -177,7 +177,10 @@ class Simulator:
         if teleport is None or not teleport:
             dist = 0.0
         else:
-            dist = self.teleport(self.maps[self.curr_map_idx])
+            if displacement is None:
+                dist = self.teleport(self.maps[self.curr_map_idx])
+            else:
+                dist = self.teleport(self.maps[self.curr_map_idx], displacement_coords=displacement)
         self.last_moved_time = None
         self.last_x = None
         self.last_y = None
@@ -232,12 +235,20 @@ class Simulator:
         if abs(a) > 0.5 * np.pi:
             self.flipped_robot = True
 
-    def teleport(self, map):
+    def teleport(self, map, random_displacement=True, displacement_coords=None):
         pct_dist = self.spawn_distance_weight * np.random.rand(1)[0]
+        if displacement_coords is not None:
+            pct_dist = 0.1
         starting_dist_idx = int(len(map.odoms) * pct_dist)
         odom_pos = copy.copy(map.odoms[starting_dist_idx])
         pose_to = Pose()
-        diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
+        if random_displacement:
+            diff_x, diff_y, diff_phi = np.random.rand(3) * 2.0 - 1.0
+        else:
+            diff_x, diff_y, diff_phi = 0.0, 0.0, 0.0
+
+        if displacement_coords is not None:
+            diff_x, diff_y, diff_phi = displacement_coords
 
         self.init_pos = (odom_pos.pose.pose.position.x, odom_pos.pose.pose.position.y)
         self.init_displacement = (diff_x, diff_y)
@@ -399,10 +410,10 @@ if __name__ == '__main__':
     # vtr = InformedVTR()
 
     # PFVTR policy
-    # vtr = PFVTR(image_pub=2)
+    vtr = PFVTR(image_pub=1)
 
     # Neural network controller
-    vtr = RLAgent()
+    # vtr = RLAgent()
 
     sim = Environment(simulator, vtr)
     day_time = 0.0  # daylight between 0.21 to 0.95
