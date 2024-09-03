@@ -1,5 +1,5 @@
 # Visual Teach and Repeat Simulator Workspace
-Workspace for unity based simulator of VTR. Currently simulating Husky robot with front camera in changing environment. \
+Workspace for unity based simulator of VTR. Currently simulating Jackal robot with front camera in changing environment. \
 The simulator used for this workspace is from [this](https://github.com/MrTomzor/navigation_unity_testbed) repository (big thanks to MrTomzor). \
 All other dependecies are added via submodules or available through apt (see src folder).
 
