@@ -11,3 +11,10 @@ All other dependecies are added via submodules or available through apt (see src
 - Attach to tmux session `tmux a -t simulator` to control the simulation.
 - You should manually run the `support.launch` (3rd tmux pane) to resize camera, publish odometry and enable control (with attached ps4 controller).
 - There is tmux session in `pfvtr` submodule tailored specifically for the simulator `start_sim.sh`.
+
+# Learning Control Policy for Visual Teach and Repeat
+This repository was used for the paper submitted to ICRA 2025. We used RL to train a control policy enabling the robot to traverse a previously mapped path.
+The implementation of VT&R with an integrated NN controller used for the real-world experiment can be found [here](https://github.com/Zdeeno/pfvtr).
+Image below shows repeated trajectories and camera images from the maps.
+
+![examples](showcase_image.png)
