@@ -14,7 +14,7 @@ All other dependecies are added via submodules or available through apt (see src
 
 # Learning Control Policy for Visual Teach and Repeat
 This repository was used for the paper submitted to ICRA 2025. We used RL to train a control policy enabling the robot to traverse a previously mapped path.
-The implementation of VT&R with an integrated NN controller used for the real-world experiment can be found [here](https://github.com/Zdeeno/pfvtr).
+The implementation of VT&R with an integrated NN controller used for the real-world experiment can be found [here](https://github.com/Zdeeno/pfvtr). The visual module is based on work presented [here](https://github.com/Zdeeno/Siamese-network-image-alignment).
 Image below shows repeated trajectories and camera images from the maps.
 
 ![examples](showcase_image.png)
