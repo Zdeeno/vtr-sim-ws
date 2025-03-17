@@ -92,8 +92,9 @@ class Map:
 
 class Simulator:
     def __init__(self, map_dir, pose_err_weight=1.0, rot_err_weight=np.pi / 4.0, dist_weight=0.5, headless=False):
+        # Simulation failure constants
         self.failure_dist = 5.0
-        self.failure_angle = np.pi / 4.0
+        self.failure_angle = 2 * np.pi  # / 1.75
         self.target_dist = 0.0
         self.not_moving_trsh = rospy.Duration(5)
         self.last_moved_time = None
@@ -134,7 +135,8 @@ class Simulator:
         self.reset_world = rospy.ServiceProxy('reset_world', ResetWorld)
 
         # parsing maps
-        all_map_dirs = sorted([f.path for f in os.scandir(map_dir) if f.is_dir() and "vtr" in f.path])
+        # all_map_dirs = sorted([f.path for f in os.scandir(map_dir) if f.is_dir() and "vtr" in f.path])
+        all_map_dirs = sorted([f.path for f in os.scandir(map_dir) if f.is_dir() and "eval" in f.path])
         self.maps = [Map(p) for p in all_map_dirs]
         rospack = rospkg.RosPack()
         # sub gt position
@@ -410,10 +412,10 @@ if __name__ == '__main__':
     # vtr = InformedVTR()
 
     # PFVTR policy
-    vtr = PFVTR(image_pub=1)
+    # vtr = PFVTR(image_pub=1)
 
     # Neural network controller
-    # vtr = RLAgent()
+    vtr = RLAgent()
 
     sim = Environment(simulator, vtr)
     day_time = 0.0  # daylight between 0.21 to 0.95

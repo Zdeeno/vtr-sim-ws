@@ -34,7 +34,7 @@ class BasinEvaluator:
         self.vtr = vtr
 
         self.basin_grid = []
-        arr = np.linspace(-2.0, 2.0, 5)
+        arr = np.linspace(-3.0, 3.0, 10)
         for x in arr:
             for y in arr:
                 self.basin_grid.append((x, y))

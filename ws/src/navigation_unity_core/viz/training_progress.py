@@ -95,7 +95,7 @@ def convergence():
         curr_dists = all_maps_dists[j]
         cmap = plt.cm.get_cmap('coolwarm')
         for i, traj in enumerate(curr_dists):
-            clr = cmap(i / (len(curr_dists) - 1))
+            clr = cmap(i / (len(curr_dists)))
             plt.plot(curr_dists[i], color=clr, alpha=0.75, linewidth=2.0)
 
     plt.show()

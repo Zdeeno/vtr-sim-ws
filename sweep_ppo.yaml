@@ -1,5 +1,5 @@
 program: ws/src/navigation_unity_core/scripts/gym_train_ppo.py
-name: sweep_ppo
+name: chrono_sweep_ppo
 method: bayes
 metric:
   goal: maximize

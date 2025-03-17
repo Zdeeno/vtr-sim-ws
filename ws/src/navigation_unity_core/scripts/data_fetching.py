@@ -11,7 +11,7 @@ class DataFetching:
         self.last_time = None
         self.input_size = input_size
         self.map_num = 1
-        self.features_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self.processing_callback, queue_size=1)
+        self.features_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self.processing_callback, queue_size=1, buff_size=20000000)
         self.data = []
         self.has_new_obs = False
 

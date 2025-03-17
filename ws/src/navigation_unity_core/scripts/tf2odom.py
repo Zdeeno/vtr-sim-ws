@@ -19,7 +19,7 @@ class TFtoOdometryConverter:
         self.convert_tf_to_odometry()
 
     def convert_tf_to_odometry(self):
-        rate = rospy.Rate(90)  # Hz
+        rate = rospy.Rate(30)  # Hz
         while not rospy.is_shutdown():
             try:
                 # Lookup the transform between "/world_origin" and "/robot1/chassis_link"

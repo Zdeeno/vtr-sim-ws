@@ -64,9 +64,9 @@ class PFVTR(BaseVTR):
         self.target_dist = 9999999999
         self.map_start = False
 
-        self.obs_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self._obs_callback, queue_size=1)
+        self.obs_sub = rospy.Subscriber("/pfvtr/matched_repr", SensorsInput, self._obs_callback, queue_size=1, buff_size=20000000)
         self.distance_sub = rospy.Subscriber("/pfvtr/repeat/output_dist", SensorsOutput, self._dist_callback,
-                                             queue_size=1)
+                                             queue_size=1, buff_size=1000000)
 
         rospy.wait_for_service("pfvtr/stop_repeater")
         self.stop_pfvtr = rospy.ServiceProxy("pfvtr/stop_repeater", StopRepeater)
@@ -132,7 +132,8 @@ class InformedVTR(BaseVTR):
         self.curr_phi = None
         self.map_start_dist = None
         self.control_pub = rospy.Publisher("/bluetooth_teleop/cmd_vel", Twist, queue_size=5)
-        self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback, queue_size=1)
+        self.pos_sub = rospy.Subscriber("/robot1/odometry", Odometry, self.odom_callback, queue_size=1,
+                                        buff_size=2000000)
 
     def repeat_map(self, start=float, end=float, map_name=str):
         dists, odoms, actions = self.fetch_map(map_name)
@@ -644,6 +645,9 @@ class RLAgent(InformedVTR):
         self.finished = True
         self.end_dist = None
 
+        self.time_scaling_angular = 1.0   # scaling of controller
+        self.time_scaling_distance = 0.75
+
         # Data fetching
         self.processing = Processing()
         self.observation_buffer = DataFetching(self.input_size)
@@ -654,7 +658,7 @@ class RLAgent(InformedVTR):
         SAVE_DIR = HOME + "/.ros/models/"
         self.device = t.device('cuda' if t.cuda.is_available() else 'cpu')
         actor_net = PPOActorSimple(2, hidden_size=1024).float().to(self.device)
-        actor_net.load_state_dict(t.load(SAVE_DIR + "actor_net.pt"))
+        actor_net.load_state_dict(t.load(SAVE_DIR + "iconic_haze.pt"))
         policy_module = TensorDictModule(
             actor_net, in_keys=["observation"], out_keys=["loc", "scale"]
         )
@@ -703,14 +707,14 @@ class RLAgent(InformedVTR):
 
     def control_robot(self, action):
         print(action)
-        self.est_dist -= action[1].cpu().detach().numpy()
+        self.est_dist -= action[1].cpu().detach().numpy() * self.time_scaling_distance
 
         nearest_z, nearest_x = self.get_nearest_command(self.est_dist)
         rospy.logwarn("Controlling robot with action: " + str(nearest_z) + " and correction " + str(action))
 
         control_command = Twist()
         control_command.linear.x = max(1.0, nearest_x)
-        control_command.angular.z = action[0].cpu().detach().numpy() + nearest_z
+        control_command.angular.z = (action[0].cpu().detach().numpy() * self.time_scaling_angular) + nearest_z
 
         self.control_pub.publish(control_command)
 
@@ -720,7 +724,8 @@ class RLAgent(InformedVTR):
         while data is None:
             data = self.observation_buffer.get_live_data()
             if data is None:
-                rospy.logwarn("WAITING FOR NEW DATA!")
+                rospy.logwarn("NEW DATA UNAVAILABLE, Waiting for new data!")
+                # return self.last_obs, False
                 rospy.sleep(0.01)
             counter += 1
             if counter >= 100 and self.last_obs is not None:

@@ -25,19 +25,19 @@ from torchrl.objectives import ClipPPOLoss, KLPENPPOLoss
 from torchrl.objectives.value import GAE
 from tqdm import tqdm
 from gym_env import GymEnvironment
-from nn_model import PPOActorSimple, PPOValueSimple
+from nn_model import PPOActorSimple, PPOValueSimple, PPOActorLSTM
 import rospy
 import os
 import tensordict
 
 
-USE_WANDB = True
+USE_WANDB = False
 
 if USE_WANDB:
     import wandb
     wandb_run = wandb.init(project="RLVTR",
                            config={
-                               "learning_rate_actor":3e-6,
+                               "learning_rate_actor":1e-5,
                                "batch_size":32,
                                "epochs":8,
                                "gamma":0.99,
@@ -168,8 +168,8 @@ collector = SyncDataCollector(
 
 replay_buffer = TensorDictReplayBuffer(
     storage=LazyTensorStorage(max_size=frames_per_batch * 10),
-    # sampler=SamplerWithoutReplacement(),
-    sampler=PrioritizedSampler(10_000, 0.7, 0.5)
+    sampler=SamplerWithoutReplacement(),
+    # sampler=PrioritizedSampler(10_000, 0.7, 0.5)
 )
 
 
@@ -239,7 +239,7 @@ for i, tensordict_data in enumerate(collector):
             torch.nn.utils.clip_grad_norm_(loss_module.parameters(), max_grad_norm)
             optim.step()
             optim.zero_grad()
-            replay_buffer.update_tensordict_priority(subdata)
+            # replay_buffer.update_tensordict_priority(subdata)
 
     logs["reward"].append(tensordict_data["next", "reward"].mean().item())
     pbar.update(tensordict_data.numel())

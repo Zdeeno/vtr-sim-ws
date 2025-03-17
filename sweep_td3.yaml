@@ -1,5 +1,5 @@
-program: ws/src/navigation_unity_core/scripts/gym_train_td3.py
-name: sweep_td3
+program: /app/ws/src/navigation_unity_core/scripts/gym_train_td3.py
+name: rci_sweep_td3
 method: bayes
 metric:
   goal: maximize
